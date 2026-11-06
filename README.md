@@ -67,6 +67,10 @@ Resources/AppIcon.png  1024×1024 app icon source
 make_app.sh            Builds DiskLens.app
 ```
 
+## License
+
+[MIT](LICENSE)
+
 ---
 
 <a id="中文"></a>
@@ -139,3 +143,7 @@ Sources/DiskLens/
 Resources/AppIcon.png  1024×1024 应用图标源文件
 make_app.sh            打包 DiskLens.app
 ```
+
+## 许可证
+
+[MIT](LICENSE)
