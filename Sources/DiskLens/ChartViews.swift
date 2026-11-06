@@ -94,22 +94,70 @@ struct TreeCell {
     let cats: [Int64]
     let dominant: Category
     let hasChildren: Bool      // 里面还画了下一层
+    let label: String          // 已经按方块宽度截断(带省略号);空 = 放不下
+    let sizeText: String?      // 名字下面的大小;nil = 放不下
 }
 
 enum TreemapLayout {
     static let maxLevel = 3
     private static let header: CGFloat = 16
+    /// 小于这个面积(像素²)的方块会被合并成一个“小项目”方块,避免角落里堆满点不到的碎方块
+    private static let minArea: Double = 420
+
+    private static let nameFont = NSFont.systemFont(ofSize: 11, weight: .medium)
+    private static let sizeFont = NSFont.systemFont(ofSize: 10)
+
+    private static func width(_ s: String, _ f: NSFont) -> CGFloat {
+        NSAttributedString(string: s, attributes: [.font: f]).size().width
+    }
+
+    /// 让文字适应给定宽度:放得下就原样返回,放不下就截断并加省略号,连几个字都放不下返回 nil
+    private static func fit(_ s: String, in w: CGFloat, font f: NSFont) -> String? {
+        guard w >= 18 else { return nil }
+        if width(s, f) <= w { return s }
+        var n = s.count - 1
+        while n >= 2 {
+            let t = String(s.prefix(n)) + "…"
+            if width(t, f) <= w { return t }
+            n -= 1
+        }
+        return nil
+    }
 
     static func cells(for root: Node, in rect: CGRect) -> [TreeCell] {
         var out: [TreeCell] = []
         func place(_ n: Node, _ r: CGRect, _ level: Int, _ hue: Double?, _ inApp: Bool) {
-            let kids = n.children.filter { $0.size > 0 }.prefix(300)
-            guard !kids.isEmpty, r.width > 1, r.height > 1 else { return }
-            let rects = squarify(kids.map { Double($0.size) }, in: r)
-            for (i, c) in kids.enumerated() {
+            guard r.width > 1, r.height > 1 else { return }
+            let all = n.children.filter { $0.size > 0 }
+            let total = all.reduce(Int64(0)) { $0 + $1.size }
+            guard total > 0 else { return }
+            // 颜色要和环形图一致:色相取自它在父节点 children 里的下标
+            var order: [ObjectIdentifier: Int] = [:]
+            for (i, c) in n.children.enumerated() { order[c.id] = i }
+
+            // 太小的合并成一个“小项目”方块
+            let area = Double(r.width * r.height)
+            var shown: [Node] = []
+            var small: [Node] = []
+            for c in all {
+                if area * Double(c.size) / Double(total) < minArea { small.append(c) } else { shown.append(c) }
+            }
+            if small.count >= 2 {
+                let agg = Node(name: "小项目 / Small items", isDir: false,
+                               size: small.reduce(Int64(0)) { $0 + $1.size })
+                agg.isAggregate = true
+                shown.append(agg)
+                shown.sort { $0.size > $1.size }
+            } else {
+                shown += small
+                shown.sort { $0.size > $1.size }
+            }
+
+            let rects = squarify(shown.map { Double($0.size) }, in: r)
+            for (i, c) in shown.enumerated() {
                 let cr = rects[i]
-                if cr.width < 2 || cr.height < 2 { continue }       // 太小的方块不画
-                let h = hue ?? fmod(0.58 + Double(i) * 0.137, 1.0)
+                if cr.width < 2 || cr.height < 2 { continue }
+                let h = hue ?? fmod(0.58 + Double(order[c.id] ?? shown.count) * 0.137, 1.0)
                 let totals = c.categoryTotals(inApp: inApp)
                 var best = Category.other
                 var bestBytes: Int64 = 0
@@ -119,8 +167,12 @@ enum TreemapLayout {
                 let childInApp = inApp || (c.isDir && c.isAppBundle)
                 let nested = c.isDir && !c.children.isEmpty && level < maxLevel
                     && cr.width > 60 && cr.height > 48
+                let label = cr.height > 16 ? (fit(c.displayName, in: cr.width - 8, font: nameFont) ?? "") : ""
+                let sizeText = (!nested && !label.isEmpty && cr.height > 32)
+                    ? fit(formatSize(c.size), in: cr.width - 8, font: sizeFont) : nil
                 out.append(TreeCell(node: c, rect: cr, level: level, hue: h, cats: totals,
-                                    dominant: best, hasChildren: nested))
+                                    dominant: best, hasChildren: nested,
+                                    label: label, sizeText: sizeText))
                 if nested {
                     let inner = CGRect(x: cr.minX + 2, y: cr.minY + header,
                                        width: cr.width - 4, height: cr.height - header - 2)
@@ -209,8 +261,8 @@ struct TreemapView: View {
     @State private var cache = TreemapCache()
 
     var body: some View {
-        GeometryReader { geo in
-            ZStack(alignment: .bottom) {
+        VStack(spacing: 0) {
+            GeometryReader { geo in
                 Canvas { ctx, size in
                     let cells = cache.cells(for: current, version: vm.segmentsVersion, size: size)
                     let gap = Prefs.theme.bg
@@ -220,23 +272,29 @@ struct TreemapView: View {
                                           hue: c.hue, cats: c.cats, dominant: c.dominant)
                         let hovered = vm.hovered === c.node
                         ctx.fill(Path(r), with: .color(vm.segmentColor(seg, hovered: hovered)))
+                        if c.hasChildren {
+                            // 容器顶部一条稍深的标题带,和里面的子方块区分开
+                            ctx.fill(Path(CGRect(x: r.minX, y: r.minY, width: r.width, height: 16)),
+                                     with: .color(.black.opacity(0.09)))
+                        }
                         ctx.stroke(Path(r), with: .color(gap), lineWidth: 1)
                     }
-                    // 名字:放在方块左上角,超出方块的部分裁掉
-                    for c in cells where c.rect.width > 46 && c.rect.height > 16 {
-                        var layer = ctx
-                        layer.clip(to: Path(c.rect))
-                        let name = Text(c.node.displayName)
-                            .font(.system(size: 11, weight: .medium))
-                            .foregroundColor(.black.opacity(0.78))
-                        layer.draw(name, at: CGPoint(x: c.rect.minX + 4, y: c.rect.minY + 2),
-                                   anchor: .topLeading)
-                        if !c.hasChildren && c.rect.height > 32 {
-                            let sz = Text(formatSize(c.node.size))
-                                .font(.system(size: 10).monospacedDigit())
-                                .foregroundColor(.black.opacity(0.55))
-                            layer.draw(sz, at: CGPoint(x: c.rect.minX + 4, y: c.rect.minY + 16),
-                                       anchor: .topLeading)
+                    // 悬停的方块:加一圈清楚的描边
+                    if let h = vm.hovered, let c = cells.last(where: { $0.node === h }) {
+                        ctx.stroke(Path(c.rect.insetBy(dx: 1, dy: 1)),
+                                   with: .color(.black.opacity(0.6)), lineWidth: 2)
+                    }
+                    // 名字和大小(布局时已经按方块宽度截断好了)
+                    for c in cells where !c.label.isEmpty {
+                        ctx.draw(Text(c.label)
+                                    .font(.system(size: 11, weight: .medium))
+                                    .foregroundColor(.black.opacity(0.78)),
+                                 at: CGPoint(x: c.rect.minX + 4, y: c.rect.minY + 2), anchor: .topLeading)
+                        if let t = c.sizeText {
+                            ctx.draw(Text(t)
+                                        .font(.system(size: 10).monospacedDigit())
+                                        .foregroundColor(.black.opacity(0.55)),
+                                     at: CGPoint(x: c.rect.minX + 4, y: c.rect.minY + 16), anchor: .topLeading)
                         }
                     }
                 }
@@ -260,21 +318,44 @@ struct TreemapView: View {
                         Button(tr("移到废纸篓…", "Move to Trash…"), role: .destructive) { vm.pendingTrash = n }
                     }
                 }
-
-                let shown = vm.hovered ?? current
-                HStack(spacing: 8) {
-                    Text(shown.displayName).lineLimit(1)
-                    Text(formatSize(shown.size)).monospacedDigit().foregroundStyle(.secondary)
-                }
-                .font(.callout)
-                .padding(.horizontal, 10)
-                .padding(.vertical, 5)
-                .background(.regularMaterial, in: Capsule())
-                .padding(.bottom, 10)
-                .allowsHitTesting(false)
+                .frame(width: geo.size.width, height: geo.size.height)
             }
-            .frame(width: geo.size.width, height: geo.size.height)
+            Divider()
+            infoBar
         }
+    }
+
+    /// 底部信息栏:悬停的项目(名称、位置、大小、占比);没有悬停时提示怎么操作。
+    /// 放在图表下面而不是盖在图上,不会遮住方块里的内容。
+    private var infoBar: some View {
+        let shown = vm.hovered
+        return HStack(spacing: 8) {
+            if let n = shown {
+                Image(systemName: n.isAggregate ? "ellipsis.circle" : (n.isDir ? "folder.fill" : "doc"))
+                    .foregroundStyle(n.isDir ? appAccent : Color.secondary)
+                Text(n.displayName).font(.callout.weight(.medium)).lineLimit(1)
+                if !n.isAggregate {
+                    Text((n.url.deletingLastPathComponent().path as NSString).abbreviatingWithTildeInPath)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .truncationMode(.head)
+                }
+                Spacer(minLength: 8)
+                Text(String(format: "%.1f%%", Double(n.size) / Double(max(current.size, 1)) * 100))
+                    .font(.caption.monospacedDigit())
+                    .foregroundStyle(.secondary)
+                Text(formatSize(n.size)).font(.callout.monospacedDigit())
+            } else {
+                Text(tr("点击方块进入文件夹;右键可加入收集器", "Click a block to open it; right-click to add it to the Collector"))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Text(formatSize(current.size)).font(.callout.monospacedDigit())
+            }
+        }
+        .padding(.horizontal, 12)
+        .frame(height: 30)
     }
 }
 
@@ -288,29 +369,45 @@ struct TreeListView: View {
     private struct Row: Identifiable {
         let node: Node
         let depth: Int
+        let hue: Double          // 和环形图 / 方块图同一套色相
         var id: ObjectIdentifier { node.id }
     }
 
     /// 只展开用户点开的节点,其余不遍历,大树也很快
     private func rows() -> [Row] {
         var out: [Row] = []
-        func walk(_ n: Node, _ depth: Int) {
-            for c in n.children {
-                out.append(Row(node: c, depth: depth))
-                if c.isDir && expanded.contains(c.id) { walk(c, depth + 1) }
+        func walk(_ n: Node, _ depth: Int, _ hue: Double?) {
+            for (i, c) in n.children.enumerated() {
+                let h = hue ?? fmod(0.58 + Double(i) * 0.137, 1.0)
+                out.append(Row(node: c, depth: depth, hue: h))
+                if c.isDir && expanded.contains(c.id) { walk(c, depth + 1, h) }
             }
         }
-        walk(current, 0)
+        walk(current, 0, nil)
         return out
+    }
+
+    /// 把当前可见的所有文件夹再展开一层
+    private func expandOneLevel(_ list: [Row]) {
+        for r in list where r.node.isDir && !r.node.isAggregate && !r.node.children.isEmpty {
+            expanded.insert(r.node.id)
+        }
     }
 
     var body: some View {
         let list = rows()
         let total = max(current.size, 1)
         VStack(spacing: 0) {
-            HStack {
+            HStack(spacing: 8) {
                 Text(current.displayName).font(.headline).lineLimit(1)
                 Spacer()
+                Button { expandOneLevel(list) } label: { Image(systemName: "arrow.down.right.and.arrow.up.left") }
+                    .buttonStyle(.borderless)
+                    .help(tr("再展开一层", "Expand one more level"))
+                Button { expanded.removeAll() } label: { Image(systemName: "arrow.up.left.and.arrow.down.right") }
+                    .buttonStyle(.borderless)
+                    .disabled(expanded.isEmpty)
+                    .help(tr("全部折叠", "Collapse all"))
                 Text(formatSize(current.size)).font(.headline.monospacedDigit())
             }
             .padding(.horizontal, 12)
@@ -321,28 +418,30 @@ struct TreeListView: View {
                     ForEach(list) { r in row(r, total: total) }
                 }
             }
+            Divider()
+            Text(tr("单击展开 / 折叠,双击进入文件夹,右键更多操作",
+                    "Click to expand / collapse, double-click to open a folder, right-click for more"))
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .padding(.vertical, 6)
         }
     }
 
     private func row(_ r: Row, total: Int64) -> some View {
         let c = r.node
-        let canExpand = c.isDir && !c.children.isEmpty
+        let canExpand = c.isDir && !c.children.isEmpty && !c.isAggregate
         let isOpen = expanded.contains(c.id)
         let frac = Double(c.size) / Double(total)
+        let barColor = c.isAggregate ? Color.gray : tc(r.hue, 0.55, 0.9)
         return HStack(spacing: 6) {
             Color.clear.frame(width: CGFloat(r.depth) * 16, height: 1)
-            Button {
-                if isOpen { expanded.remove(c.id) } else { expanded.insert(c.id) }
-            } label: {
-                Image(systemName: isOpen ? "chevron.down" : "chevron.right")
-                    .font(.caption2.weight(.semibold))
-                    .frame(width: 12)
-                    .opacity(canExpand ? 1 : 0)
-            }
-            .buttonStyle(.plain)
-            .disabled(!canExpand)
+            Image(systemName: isOpen ? "chevron.down" : "chevron.right")
+                .font(.caption2.weight(.semibold))
+                .frame(width: 12)
+                .foregroundStyle(.secondary)
+                .opacity(canExpand ? 1 : 0)
             Image(systemName: c.isAggregate ? "ellipsis.circle" : (c.isDir ? "folder.fill" : "doc"))
-                .foregroundStyle(c.isDir ? appAccent : Color.secondary)
+                .foregroundStyle(c.isAggregate ? Color.secondary : (c.isDir ? tc(r.hue, 0.6, 0.85) : Color.secondary))
                 .frame(width: 16)
             Text(c.displayName).lineLimit(1).truncationMode(.middle)
             Spacer(minLength: 8)
@@ -357,17 +456,33 @@ struct TreeListView: View {
         .padding(.horizontal, 10)
         .padding(.vertical, 4)
         .background(alignment: .leading) {
+            // 缩进引导线
+            HStack(spacing: 0) {
+                Color.clear.frame(width: 10)
+                ForEach(0..<r.depth, id: \.self) { _ in
+                    Rectangle().fill(Color.secondary.opacity(0.16)).frame(width: 1)
+                        .frame(width: 16, alignment: .leading)
+                }
+            }
+        }
+        .background(alignment: .leading) {
+            // 占比条:颜色和环形图 / 方块图一致
             GeometryReader { g in
                 Rectangle()
-                    .fill(appAccent.opacity(vm.hovered === c ? 0.28 : 0.14))
+                    .fill(barColor.opacity(vm.hovered === c ? 0.42 : 0.24))
                     .frame(width: g.size.width * CGFloat(min(1, frac)))
             }
         }
         .contentShape(Rectangle())
         .onTapGesture(count: 2) { vm.open(c) }
+        .onTapGesture {
+            guard canExpand else { return }
+            if isOpen { expanded.remove(c.id) } else { expanded.insert(c.id) }
+        }
         .onHover { inside in
             if inside { vm.hovered = c } else if vm.hovered === c { vm.hovered = nil }
         }
+        .help(c.isAggregate ? "" : c.url.path)
         .contextMenu {
             if canExpand {
                 Button(tr("打开这个文件夹", "Open this folder")) { vm.open(c) }
