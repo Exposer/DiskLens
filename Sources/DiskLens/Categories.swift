@@ -1,8 +1,14 @@
 import SwiftUI
 
-enum ViewMode: String, CaseIterable, Hashable {
-    case folders = "文件夹"
-    case types = "文件类型"
+enum ViewMode: CaseIterable, Hashable {
+    case folders, types
+
+    var title: String {
+        switch self {
+        case .folders: return tr("文件夹", "Folders")
+        case .types: return tr("文件类型", "File Types")
+        }
+    }
 }
 
 /// 文件类型分类(按扩展名;.app 包内的所有文件算“应用程序”)
@@ -14,14 +20,14 @@ enum Category: Int, CaseIterable, Identifiable {
 
     var title: String {
         switch self {
-        case .video: return "视频"
-        case .audio: return "音频"
-        case .image: return "图片"
-        case .document: return "文档"
-        case .archive: return "压缩包 / 安装包 / 磁盘映像"
-        case .app: return "应用程序"
-        case .code: return "代码 / 开发文件"
-        case .other: return "其他"
+        case .video: return tr("视频", "Video")
+        case .audio: return tr("音频", "Audio")
+        case .image: return tr("图片", "Images")
+        case .document: return tr("文档", "Documents")
+        case .archive: return tr("压缩包 / 安装包 / 磁盘映像", "Archives / Installers / Disk Images")
+        case .app: return tr("应用程序", "Apps")
+        case .code: return tr("代码 / 开发文件", "Code / Dev Files")
+        case .other: return tr("其他", "Other")
         }
     }
 
@@ -40,13 +46,13 @@ enum Category: Int, CaseIterable, Identifiable {
 
     var color: Color {
         switch self {
-        case .video: return Color(hue: 0.98, saturation: 0.6, brightness: 0.92)
-        case .audio: return Color(hue: 0.80, saturation: 0.5, brightness: 0.9)
-        case .image: return Color(hue: 0.38, saturation: 0.55, brightness: 0.8)
-        case .document: return Color(hue: 0.58, saturation: 0.6, brightness: 0.9)
-        case .archive: return Color(hue: 0.10, saturation: 0.7, brightness: 0.95)
-        case .app: return Color(hue: 0.68, saturation: 0.55, brightness: 0.9)
-        case .code: return Color(hue: 0.47, saturation: 0.55, brightness: 0.8)
+        case .video: return tc(0.98, 0.6, 0.92)
+        case .audio: return tc(0.80, 0.5, 0.9)
+        case .image: return tc(0.38, 0.55, 0.8)
+        case .document: return tc(0.58, 0.6, 0.9)
+        case .archive: return tc(0.10, 0.7, 0.95)
+        case .app: return tc(0.68, 0.55, 0.9)
+        case .code: return tc(0.47, 0.55, 0.8)
         case .other: return Color(white: 0.55)
         }
     }
@@ -181,7 +187,8 @@ struct CategoryListView: View {
                     row(cat, bytes: totals[cat.rawValue], sum: sum)
                 }
 
-                Text("统计的是当前文件夹整棵子树里的全部文件。点一个类型,可以查看该类型里最大的文件。")
+                Text(tr("统计的是当前文件夹整棵子树里的全部文件。点一个类型,可以查看该类型里最大的文件。",
+                        "Totals cover every file in the current folder's whole subtree. Click a type to see its largest files."))
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .padding(12)

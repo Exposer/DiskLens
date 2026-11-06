@@ -185,7 +185,7 @@ enum SunburstLayout {
         if s.node.isAggregate { return Color(white: hovered ? 0.72 : 0.55) }
         let sat = max(0.25, 0.62 - 0.1 * Double(s.level - 1))
         let bri = min(1.0, 0.82 + 0.04 * Double(s.level - 1) + (hovered ? 0.12 : 0))
-        return Color(hue: s.hue, saturation: sat, brightness: bri)
+        return tc(s.hue, sat, bri)
     }
 }
 
@@ -330,7 +330,7 @@ final class ViewModel: ObservableObject {
         guard root == nil, !scanning, scanner == nil else { return }
         let url = target
         scanning = true
-        scanningPath = "正在读取上次保存的扫描结果…"
+        scanningPath = tr("正在读取上次保存的扫描结果…", "Loading the last saved scan…")
         Task.detached(priority: .userInitiated) { [weak self] in
             let loaded = ScanStore.load(path: url.path)
             await MainActor.run {

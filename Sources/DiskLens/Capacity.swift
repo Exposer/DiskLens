@@ -34,28 +34,29 @@ struct CapacityBar: View {
     @State private var usage = VolumeUsage.read()
     @State private var showInfo = false
 
-    private let usedColor = Color(hue: 0.58, saturation: 0.6, brightness: 0.85)
-    private let purgeColor = Color(hue: 0.10, saturation: 0.65, brightness: 0.95)
-    private let freeColor = Color.secondary.opacity(0.25)
+    private var usedColor: Color { tc(0.58, 0.6, 0.85) }
+    private var purgeColor: Color { tc(0.10, 0.65, 0.95) }
+    private var freeColor: Color { Color.secondary.opacity(0.25) }
 
     var body: some View {
         HStack(spacing: 12) {
             if let u = usage {
                 bar(u)
                     .frame(width: 220, height: 10)
-                legend(color: usedColor, title: "已用", bytes: u.used)
-                legend(color: purgeColor, title: "可清除", bytes: u.purgeable)
-                legend(color: freeColor, title: "空闲", bytes: u.free)
+                legend(color: usedColor, title: tr("已用", "Used"), bytes: u.used)
+                legend(color: purgeColor, title: tr("可清除", "Purgeable"), bytes: u.purgeable)
+                legend(color: freeColor, title: tr("空闲", "Free"), bytes: u.free)
                 Button {
                     showInfo.toggle()
                 } label: {
                     Image(systemName: "info.circle")
                 }
                 .buttonStyle(.borderless)
-                .help("什么是可清除空间?")
+                .help(tr("什么是可清除空间?", "What is purgeable space?"))
                 .popover(isPresented: $showInfo, arrowEdge: .top) { info(u) }
             } else {
-                Text("无法读取磁盘容量").font(.caption).foregroundStyle(.secondary)
+                Text(tr("无法读取磁盘容量", "Unable to read disk capacity"))
+                    .font(.caption).foregroundStyle(.secondary)
             }
         }
         .onReceive(Timer.publish(every: 5, on: .main, in: .common).autoconnect()) { _ in
@@ -90,30 +91,32 @@ struct CapacityBar: View {
 
     private func info(_ u: VolumeUsage) -> some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("可清除空间").font(.headline)
-            Text("这部分空间现在被占用,但 macOS 在磁盘不足时会自动释放,比如可重新下载的 iCloud 文件、系统缓存和本地 Time Machine 快照。你不需要手动清理它。")
+            Text(tr("可清除空间", "Purgeable Space")).font(.headline)
+            Text(tr("这部分空间现在被占用,但 macOS 在磁盘不足时会自动释放,比如可重新下载的 iCloud 文件、系统缓存和本地 Time Machine 快照。你不需要手动清理它。",
+                    "This space is in use now, but macOS frees it automatically when the disk runs low — for example re-downloadable iCloud files, system caches and local Time Machine snapshots. You don't need to clean it up manually."))
                 .fixedSize(horizontal: false, vertical: true)
             Divider()
             Group {
-                row("容量", u.total)
-                row("已用(不可自动释放)", u.used)
-                row("可清除", u.purgeable)
-                row("空闲", u.free)
-                row("系统视角的可用 (空闲 + 可清除)", u.available)
+                row(tr("容量", "Capacity"), u.total)
+                row(tr("已用(不可自动释放)", "Used (not auto-reclaimable)"), u.used)
+                row(tr("可清除", "Purgeable"), u.purgeable)
+                row(tr("空闲", "Free"), u.free)
+                row(tr("系统视角的可用 (空闲 + 可清除)", "Available to the system (Free + Purgeable)"), u.available)
             }
             Divider()
-            Text("扫描到的大文件不一定算在「已用」里,可清除部分的内容 DiskLens 看不到,所以扫描总和可能小于「已用」。")
+            Text(tr("扫描到的大文件不一定算在「已用」里,可清除部分的内容 DiskLens 看不到,所以扫描总和可能小于「已用」。",
+                    "Purgeable content is invisible to a file scan, so the scanned total can be smaller than \"Used\"."))
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
-            Button("打开「储存空间」设置") {
+            Button(tr("打开「储存空间」设置", "Open Storage Settings")) {
                 if let url = URL(string: "x-apple.systempreferences:com.apple.settings.Storage") {
                     NSWorkspace.shared.open(url)
                 }
             }
         }
         .padding(14)
-        .frame(width: 320)
+        .frame(width: 340)
     }
 
     private func row(_ title: String, _ bytes: Int64) -> some View {

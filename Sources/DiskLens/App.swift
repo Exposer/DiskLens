@@ -11,7 +11,21 @@ struct DiskLensApp: App {
 
     var body: some Scene {
         WindowGroup("DiskLens") {
-            ContentView()
+            RootView()
         }
+    }
+}
+
+/// ViewModel 放在这一层;切换语言 / 配色时,只重建下面的界面(version 变化 → .id 变化),
+/// 扫描结果和收集器里的内容都不受影响。
+struct RootView: View {
+    @StateObject private var vm = ViewModel()
+    @State private var version = 0
+
+    var body: some View {
+        ContentView(vm: vm, onPrefsChange: { version += 1 })
+            .id(version)
+            .tint(Prefs.theme.accent)
+            .preferredColorScheme(Prefs.theme.scheme)
     }
 }

@@ -9,7 +9,9 @@ private struct CollectorFramePref: PreferenceKey {
 // MARK: - 主界面
 
 struct ContentView: View {
-    @StateObject private var vm = ViewModel()
+    @ObservedObject var vm: ViewModel
+    /// 切换语言 / 配色后通知上层重建界面
+    let onPrefsChange: () -> Void
 
     private var overCollector: Bool {
         vm.dragPoint.map { vm.collectorFrame.contains($0) } ?? false
@@ -18,6 +20,7 @@ struct ContentView: View {
     var body: some View {
         VStack(spacing: 0) {
             toolbar
+                .background(Prefs.theme.bar)
             Divider()
             if vm.isCached, let d = vm.scanDate {
                 cacheBanner(d)
@@ -34,13 +37,14 @@ struct ContentView: View {
                 } else if vm.scanning {
                     ScanningView(vm: vm)
                 } else {
-                    Text("选择一个文件夹开始扫描")
+                    Text(tr("选择一个文件夹开始扫描", "Choose a folder to start scanning"))
                         .foregroundStyle(.secondary)
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
             }
             Divider()
             CollectorView(vm: vm, highlighted: overCollector)
+                .background(Prefs.theme.bar)
                 .background(GeometryReader { g in
                     Color.clear.preference(key: CollectorFramePref.self,
                                            value: g.frame(in: .named("root")))
@@ -48,15 +52,17 @@ struct ContentView: View {
                 .onPreferenceChange(CollectorFramePref.self) { vm.collectorFrame = $0 }
             Divider()
             statusBar
+                .background(Prefs.theme.bar)
         }
         .frame(minWidth: 900, minHeight: 640)
+        .background(Prefs.theme.bg)
         .coordinateSpace(name: "root")
         .overlay(alignment: .topLeading) {
             // 从环形图拖出时跟随鼠标的小标签
             if let n = vm.dragNode, let p = vm.dragPoint {
                 HStack(spacing: 6) {
                     Image(systemName: n.isDir ? "folder.fill" : "doc")
-                    Text(n.name).lineLimit(1).frame(maxWidth: 160)
+                    Text(n.displayName).lineLimit(1).frame(maxWidth: 160)
                     Text(formatSize(n.size)).monospacedDigit().foregroundStyle(.secondary)
                 }
                 .padding(.horizontal, 10)
@@ -68,32 +74,35 @@ struct ContentView: View {
             }
         }
         .onAppear { vm.loadCachedOrScan() }
-        .alert("移到废纸篓?", isPresented: Binding(
+        .alert(tr("移到废纸篓?", "Move to Trash?"), isPresented: Binding(
             get: { vm.pendingTrash != nil },
             set: { if !$0 { vm.pendingTrash = nil } })
         ) {
-            Button("取消", role: .cancel) {}
-            Button("移到废纸篓", role: .destructive) {
+            Button(tr("取消", "Cancel"), role: .cancel) {}
+            Button(tr("移到废纸篓", "Move to Trash"), role: .destructive) {
                 if let n = vm.pendingTrash { vm.trash(n) }
             }
         } message: {
             if let n = vm.pendingTrash {
-                Text("\(n.name)(\(formatSize(n.size)))\n可在废纸篓中恢复。")
+                Text("\(n.displayName) (\(formatSize(n.size)))\n" + tr("可在废纸篓中恢复。", "You can restore it from the Trash."))
             }
         }
-        .alert("清理收集器中的 \(vm.collected.count) 个项目?", isPresented: $vm.confirmTrashCollected) {
-            Button("取消", role: .cancel) {}
-            Button("移到废纸篓 (\(formatSize(vm.collectedSize)))", role: .destructive) {
+        .alert(tr("清理收集器中的 \(vm.collected.count) 个项目?",
+                  "Clean up \(vm.collected.count) item\(vm.collected.count == 1 ? "" : "s") in the Collector?"),
+               isPresented: $vm.confirmTrashCollected) {
+            Button(tr("取消", "Cancel"), role: .cancel) {}
+            Button(tr("移到废纸篓", "Move to Trash") + " (\(formatSize(vm.collectedSize)))", role: .destructive) {
                 vm.trashItems(vm.collected)
             }
         } message: {
-            Text("这些项目会被移到废纸篓,可在废纸篓中恢复。")
+            Text(tr("这些项目会被移到废纸篓,可在废纸篓中恢复。",
+                    "These items will be moved to the Trash and can be restored from there."))
         }
-        .alert("操作失败", isPresented: Binding(
+        .alert(tr("操作失败", "Operation Failed"), isPresented: Binding(
             get: { vm.errorMessage != nil },
             set: { if !$0 { vm.errorMessage = nil } })
         ) {
-            Button("好") {}
+            Button(tr("好", "OK")) {}
         } message: {
             Text(vm.errorMessage ?? "")
         }
@@ -101,13 +110,13 @@ struct ContentView: View {
 
     private var toolbar: some View {
         HStack(spacing: 10) {
-            Button("选择文件夹…") { chooseFolder() }
-            Button("扫描整个磁盘") { vm.scan(URL(fileURLWithPath: "/")) }
-            Button("个人文件夹") { vm.scan(FileManager.default.homeDirectoryForCurrentUser) }
+            Button(tr("选择文件夹…", "Choose Folder…")) { chooseFolder() }
+            Button(tr("扫描整个磁盘", "Scan Whole Disk")) { vm.scan(URL(fileURLWithPath: "/")) }
+            Button(tr("个人文件夹", "Home Folder")) { vm.scan(FileManager.default.homeDirectoryForCurrentUser) }
             Button {
                 vm.scan(vm.target)
             } label: {
-                Label("重新扫描", systemImage: "arrow.clockwise")
+                Label(tr("重新扫描", "Rescan"), systemImage: "arrow.clockwise")
             }
             .disabled(vm.scanning)
 
@@ -117,7 +126,7 @@ struct ContentView: View {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 4) {
                     ForEach(vm.trail) { n in
-                        Button(n.name) { vm.current = n }
+                        Button(n.displayName) { vm.current = n }
                             .buttonStyle(.link)
                         if n !== vm.trail.last {
                             Image(systemName: "chevron.right").font(.caption2).foregroundStyle(.tertiary)
@@ -125,6 +134,9 @@ struct ContentView: View {
                     }
                 }
             }
+
+            Divider().frame(height: 16)
+            SettingsMenus(onChange: onPrefsChange)
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
@@ -133,15 +145,16 @@ struct ContentView: View {
     private func cacheBanner(_ date: Date) -> some View {
         HStack(spacing: 8) {
             Image(systemName: "clock.arrow.circlepath")
-            Text("显示的是 \(date.formatted(date: .abbreviated, time: .shortened))(\(RelativeDateTimeFormatter().localizedString(for: date, relativeTo: Date())))保存的扫描结果,之后磁盘可能已有变化。")
+            Text(tr("显示的是 \(formatDate(date))(\(relativeDate(date)))保存的扫描结果,之后磁盘可能已有变化。",
+                    "Showing results saved on \(formatDate(date)) (\(relativeDate(date))). The disk may have changed since."))
                 .font(.callout)
                 .lineLimit(1)
             Spacer()
-            Button("重新扫描") { vm.scan(vm.target) }
+            Button(tr("重新扫描", "Rescan")) { vm.scan(vm.target) }
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 6)
-        .background(Color.accentColor.opacity(0.12))
+        .background(appAccent.opacity(0.14))
     }
 
     private var statusBar: some View {
@@ -149,7 +162,8 @@ struct ContentView: View {
             CapacityBar()
             Spacer()
             CacheButton(vm: vm)
-            Button("部分目录打不开?授予「完全磁盘访问权限」") {
+            Button(tr("部分目录打不开?授予「完全磁盘访问权限」",
+                      "Some folders won't open? Grant Full Disk Access")) {
                 if let u = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles") {
                     NSWorkspace.shared.open(u)
                 }
@@ -166,6 +180,7 @@ struct ContentView: View {
         p.canChooseDirectories = true
         p.canChooseFiles = false
         p.allowsMultipleSelection = false
+        p.prompt = tr("扫描", "Scan")
         if p.runModal() == .OK, let u = p.url { vm.scan(u) }
     }
 }
@@ -181,12 +196,16 @@ struct CacheButton: View {
         Button {
             confirm = true
         } label: {
-            Label(size > 0 ? "清除缓存 (\(formatSize(size)))" : "无缓存", systemImage: "trash.slash")
+            Label(size > 0
+                  ? tr("清除缓存 (\(formatSize(size)))", "Clear Cache (\(formatSize(size)))")
+                  : tr("无缓存", "No Cache"),
+                  systemImage: "trash.slash")
         }
         .buttonStyle(.link)
         .font(.caption)
         .disabled(size == 0)
-        .help("删除已保存的扫描结果。当前窗口里的结果不受影响,下次启动会重新扫描。")
+        .help(tr("删除已保存的扫描结果。当前窗口里的结果不受影响,下次启动会重新扫描。",
+                 "Delete saved scan results. The results in this window are unaffected; the next launch will rescan."))
         .onChange(of: vm.scanDate) { _ in
             // 扫描结果在界面更新之后才写盘,稍等一会儿再刷新大小
             Task {
@@ -195,14 +214,15 @@ struct CacheButton: View {
             }
         }
         .onAppear { size = ScanStore.totalSize() }
-        .alert("清除已保存的扫描结果?", isPresented: $confirm) {
-            Button("取消", role: .cancel) {}
-            Button("清除", role: .destructive) {
+        .alert(tr("清除已保存的扫描结果?", "Clear saved scan results?"), isPresented: $confirm) {
+            Button(tr("取消", "Cancel"), role: .cancel) {}
+            Button(tr("清除", "Clear"), role: .destructive) {
                 ScanStore.clearAll()
                 size = ScanStore.totalSize()
             }
         } message: {
-            Text("只会删除 DiskLens 自己保存的缓存文件,不会动你的任何文件。下次启动会重新扫描。")
+            Text(tr("只会删除 DiskLens 自己保存的缓存文件,不会动你的任何文件。下次启动会重新扫描。",
+                    "Only DiskLens's own cache files are deleted; none of your files are touched. The next launch will rescan."))
         }
     }
 }
@@ -245,14 +265,14 @@ struct ScanningView: View {
                                 let len = 0.55 + 0.4 * sin(t * 1.3 + Double(k + lvl))
                                 let hue = fmod(0.58 + 0.137 * Double(k + lvl), 1.0)
                                 ctx.stroke(arcPath(center: g.center, radius: r, from: start, to: start + len),
-                                           with: .color(Color(hue: hue, saturation: 0.55, brightness: 0.92)),
+                                           with: .color(tc(hue, 0.55, 0.92)),
                                            style: StrokeStyle(lineWidth: lineWidth, lineCap: .round))
                             }
                         }
                     }
                 }
                 VStack(spacing: 2) {
-                    Text("已统计")
+                    Text(tr("已统计", "Scanned"))
                         .font(.caption)
                         .foregroundStyle(.secondary)
                     Text(formatSize(vm.scannedBytes))
@@ -283,14 +303,14 @@ struct FileListView: View {
     var body: some View {
         VStack(spacing: 0) {
             HStack {
-                Text(node.name).font(.headline).lineLimit(1)
+                Text(node.displayName).font(.headline).lineLimit(1)
                 Spacer()
                 Text(formatSize(node.size)).font(.headline.monospacedDigit())
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
             Picker("", selection: $vm.viewMode) {
-                ForEach(ViewMode.allCases, id: \.self) { Text($0.rawValue).tag($0) }
+                ForEach(ViewMode.allCases, id: \.self) { Text($0.title).tag($0) }
             }
             .pickerStyle(.segmented)
             .labelsHidden()
@@ -310,12 +330,13 @@ struct FileListView: View {
                     Button {
                         vm.selectedCategory = nil
                     } label: {
-                        Label("全部类型", systemImage: "chevron.left")
+                        Label(tr("全部类型", "All Types"), systemImage: "chevron.left")
                     }
                     .buttonStyle(.link)
                     Spacer()
                     Image(systemName: cat.icon).foregroundStyle(cat.color)
-                    Text("\(cat.title) · 最大的 \(vm.topFiles.count) 个文件")
+                    Text(tr("\(cat.title) · 最大的 \(vm.topFiles.count) 个文件",
+                            "\(cat.title) · Top \(vm.topFiles.count) files"))
                         .font(.callout)
                         .lineLimit(1)
                 }
@@ -329,7 +350,7 @@ struct FileListView: View {
                         }
                     }
                 }
-                Text("只统计 2MB 以上的文件")
+                Text(tr("只统计 2MB 以上的文件", "Only files of 2 MB or more are listed"))
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .padding(6)
@@ -344,14 +365,14 @@ struct FileListView: View {
         return HStack(spacing: 8) {
             Image(systemName: inCollector ? "tray.full.fill"
                   : (c.isAggregate ? "square.stack.3d.up" : (c.isDir ? "folder.fill" : "doc")))
-                .foregroundStyle(inCollector || c.isDir ? Color.accentColor : Color.secondary)
+                .foregroundStyle(inCollector || c.isDir ? appAccent : Color.secondary)
                 .frame(width: 18)
             VStack(alignment: .leading, spacing: 3) {
-                Text(c.name).lineLimit(1).truncationMode(.middle)
+                Text(c.displayName).lineLimit(1).truncationMode(.middle)
                 GeometryReader { g in
                     ZStack(alignment: .leading) {
                         Capsule().fill(.quaternary)
-                        Capsule().fill(Color.accentColor.opacity(0.8))
+                        Capsule().fill(appAccent.opacity(0.8))
                             .frame(width: g.size.width * CGFloat(Double(c.size) / Double(max(node.size, 1))))
                     }
                 }
@@ -363,16 +384,17 @@ struct FileListView: View {
                 .frame(minWidth: 70, alignment: .trailing)
             if !c.isAggregate {
                 Button { vm.collect(c) } label: { Image(systemName: "tray.and.arrow.down") }
-                    .buttonStyle(.borderless).help("加入收集器(也可以直接拖到下方收集器)")
+                    .buttonStyle(.borderless)
+                    .help(tr("加入收集器(也可以直接拖到下方收集器)", "Add to Collector (or drag it onto the Collector below)"))
                 Button { vm.reveal(c) } label: { Image(systemName: "magnifyingglass") }
-                    .buttonStyle(.borderless).help("在 Finder 中显示")
+                    .buttonStyle(.borderless).help(tr("在 Finder 中显示", "Reveal in Finder"))
                 Button { vm.pendingTrash = c } label: { Image(systemName: "trash") }
-                    .buttonStyle(.borderless).help("移到废纸篓")
+                    .buttonStyle(.borderless).help(tr("移到废纸篓", "Move to Trash"))
             }
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 5)
-        .background(vm.hovered === c ? Color.accentColor.opacity(0.14) : Color.clear)
+        .background(vm.hovered === c ? appAccent.opacity(0.14) : Color.clear)
         .contentShape(Rectangle())
         .onTapGesture { vm.open(c) }
         .onHover { inside in
@@ -380,13 +402,13 @@ struct FileListView: View {
         }
         .onDrag {
             vm.dragging = c
-            return NSItemProvider(object: c.name as NSString)
+            return NSItemProvider(object: c.displayName as NSString)
         }
         .contextMenu {
             if !c.isAggregate {
-                Button("加入收集器") { vm.collect(c) }
-                Button("在 Finder 中显示") { vm.reveal(c) }
-                Button("移到废纸篓…", role: .destructive) { vm.pendingTrash = c }
+                Button(tr("加入收集器", "Add to Collector")) { vm.collect(c) }
+                Button(tr("在 Finder 中显示", "Reveal in Finder")) { vm.reveal(c) }
+                Button(tr("移到废纸篓…", "Move to Trash…"), role: .destructive) { vm.pendingTrash = c }
             }
         }
     }
@@ -406,19 +428,20 @@ struct CollectorView: View {
             VStack(spacing: 2) {
                 Image(systemName: vm.collected.isEmpty ? "tray" : "tray.full.fill")
                     .font(.title2)
-                Text("收集器").font(.caption)
+                Text(tr("收集器", "Collector")).font(.caption)
             }
-            .foregroundStyle(active ? Color.accentColor : Color.secondary)
-            .frame(width: 56)
+            .foregroundStyle(active ? appAccent : Color.secondary)
+            .frame(width: 64)
 
             ZStack {
                 RoundedRectangle(cornerRadius: 10)
-                    .fill(active ? Color.accentColor.opacity(0.1) : Color.clear)
+                    .fill(active ? appAccent.opacity(0.1) : Color.clear)
                 RoundedRectangle(cornerRadius: 10)
-                    .strokeBorder(active ? Color.accentColor : Color.secondary.opacity(0.4),
+                    .strokeBorder(active ? appAccent : Color.secondary.opacity(0.4),
                                   style: StrokeStyle(lineWidth: 1.5, dash: [6, 4]))
                 if vm.collected.isEmpty {
-                    Text("把文件或文件夹拖到这里,攒够了再一次性清理")
+                    Text(tr("把文件或文件夹拖到这里,攒够了再一次性清理",
+                            "Drag files or folders here, then clean them all up at once"))
                         .font(.callout)
                         .foregroundStyle(.secondary)
                 } else {
@@ -436,12 +459,12 @@ struct CollectorView: View {
                 Text(formatSize(vm.collectedSize))
                     .font(.title3.monospacedDigit().weight(.semibold))
                 HStack(spacing: 8) {
-                    Button("清空") { vm.clearCollector() }
+                    Button(tr("清空", "Clear")) { vm.clearCollector() }
                         .disabled(vm.collected.isEmpty)
                     Button(role: .destructive) {
                         vm.confirmTrashCollected = true
                     } label: {
-                        Label("移到废纸篓", systemImage: "trash")
+                        Label(tr("移到废纸篓", "Move to Trash"), systemImage: "trash")
                     }
                     .disabled(vm.collected.isEmpty)
                 }
@@ -459,7 +482,7 @@ struct CollectorView: View {
         HStack(spacing: 6) {
             Image(systemName: n.isDir ? "folder.fill" : "doc")
                 .foregroundStyle(.secondary)
-            Text(n.name).lineLimit(1).frame(maxWidth: 140)
+            Text(n.displayName).lineLimit(1).frame(maxWidth: 140)
             Text(formatSize(n.size)).font(.caption.monospacedDigit()).foregroundStyle(.secondary)
             Button { vm.uncollect(n) } label: { Image(systemName: "xmark.circle.fill") }
                 .buttonStyle(.borderless)
@@ -489,6 +512,7 @@ struct SunburstView: View {
                         let p = vm.revealing ? min(1, max(0, elapsed / 0.7)) : 1
                         let eased = 1 - pow(1 - p, 3)
                         let limit = eased * 2 * Double.pi
+                        let gap = Prefs.theme.bg
                         for s in vm.segments {
                             if s.a0 >= limit { continue }
                             var clipped = s
@@ -499,7 +523,7 @@ struct SunburstView: View {
                                 ? SunburstLayout.typeColor(s, hovered: isHover, selected: vm.selectedCategory)
                                 : SunburstLayout.color(s, hovered: isHover)
                             ctx.fill(path, with: .color(fillColor))
-                            ctx.stroke(path, with: .color(Color(nsColor: .windowBackgroundColor)), lineWidth: 1)
+                            ctx.stroke(path, with: .color(gap), lineWidth: 1)
                         }
                     }
                 }
@@ -567,7 +591,7 @@ struct SunburstView: View {
             if current.parent != nil && vm.hovered == nil {
                 Image(systemName: "arrow.up.circle").foregroundStyle(.secondary)
             }
-            Text(shown.name)
+            Text(shown.displayName)
                 .font(.callout.weight(.semibold))
                 .lineLimit(2)
                 .multilineTextAlignment(.center)
