@@ -43,8 +43,9 @@ xattr -cr "$APP"
 # 签名:默认是临时(ad-hoc)签名,但这样每次打包的“指定要求”都是这一份二进制的哈希,
 # 系统会把新包当成另一个程序,之前授予的「完全磁盘访问权限」就失效了(扫描会少算受保护的目录)。
 # 想让权限只授予一次:用固定证书签名,例如
-#   DISKLENS_SIGN_IDENTITY="Apple Development: 你的名字 (TEAMID)" ./make_app.sh
-# 可用的证书见 `security find-identity -v -p codesigning`
+#   DISKLENS_SIGN_IDENTITY="<证书的 SHA-1 哈希>" ./make_app.sh
+# 可用的证书和哈希见 `security find-identity -v -p codesigning`。
+# 用哈希而不是名字:钥匙串里有多份同名证书时,按名字签名会报 "ambiguous"。
 SIGN_ID="${DISKLENS_SIGN_IDENTITY:--}"
 codesign --force --sign "$SIGN_ID" "$APP"
 if [ "$SIGN_ID" = "-" ]; then
