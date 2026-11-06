@@ -263,9 +263,14 @@ final class ViewModel: ObservableObject {
     @Published var typeGrouping: TypeGrouping = .category {
         didSet { refreshTopFiles(); refreshExtStats() }
     }
-    @Published var selectedExt: String? { didSet { refreshTopFiles() } }   // "" = 没有扩展名
+    @Published var selectedExt: String? {       // "" = 没有扩展名
+        didSet { refreshTopFiles(); refreshExtHighlight() }
+    }
     @Published var extStats: [ExtStat] = []     // 按扩展名统计
     @Published var extSmallBytes: Int64 = 0     // 被合并的小文件总大小
+    /// 环形图高亮用:每个节点子树里属于所选扩展名的字节数(随所选扩展名 / 当前文件夹刷新)
+    var extHighlight: [UUID: Int64] = [:]
+    var extHighlightColor: Color = .accentColor
     @Published var topFiles: [Node] = []        // “按类型”模式下,所选类型里最大的文件
     @Published var hogs: [HogItem] = []         // “占用大户”列表
     @Published var hogsLoading = false

@@ -607,9 +607,7 @@ struct SunburstView: View {
                             clipped.a1 = min(s.a1, limit)
                             let path = g.path(for: clipped)
                             let isHover = vm.hovered === s.node
-                            let fillColor = vm.viewMode == .types
-                                ? SunburstLayout.typeColor(s, hovered: isHover, selected: vm.selectedCategory)
-                                : SunburstLayout.color(s, hovered: isHover)
+                            let fillColor = segmentColor(s, hovered: isHover)
                             ctx.fill(path, with: .color(fillColor))
                             ctx.stroke(path, with: .color(gap), lineWidth: 1)
                         }
@@ -655,7 +653,29 @@ struct SunburstView: View {
             }
         }
         .overlay(alignment: .bottom) {
-            if vm.viewMode == .types { TypeLegend(vm: vm, node: current) }
+            if vm.viewMode == .types {
+                if vm.typeGrouping == .category {
+                    TypeLegend(vm: vm, node: current)
+                } else {
+                    ExtHighlightChip(vm: vm)
+                }
+            }
+        }
+    }
+
+    /// 扇形颜色:文件夹模式按文件夹着色;文件类型模式按类别 / 所选扩展名着色
+    private func segmentColor(_ s: Segment, hovered: Bool) -> Color {
+        guard vm.viewMode == .types else { return SunburstLayout.color(s, hovered: hovered) }
+        switch vm.typeGrouping {
+        case .category:
+            return SunburstLayout.typeColor(s, hovered: hovered, selected: vm.selectedCategory)
+        case .byExtension:
+            if vm.selectedExt != nil {
+                return SunburstLayout.extColor(s, hovered: hovered,
+                                               bytes: vm.extHighlight[s.node.id] ?? 0,
+                                               color: vm.extHighlightColor)
+            }
+            return SunburstLayout.typeColor(s, hovered: hovered, selected: nil)
         }
     }
 

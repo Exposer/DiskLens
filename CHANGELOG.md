@@ -8,6 +8,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions `0.1.0`
 
 ## [Unreleased]
 
+## [0.16.0] - 2026-11-06
+
+### Added / 新增
+- **Sunburst highlights the selected extension**: after you click an extension on the *Types → By extension* list, the chart fades everything else and lights up the slices that contain it — the more of that extension a folder holds, the stronger its color. A pill below the chart shows what is highlighted (file count and size) and clears it with ✕. / **环形图高亮所选扩展名**:在「文件类型 → 按扩展名」里点一个扩展名后,图表会淡化其余部分,只点亮包含它的扇形,文件夹里这种文件越多颜色越鲜艳。图表下方的提示条显示正在高亮什么(文件数和大小),点 ✕ 取消。
+
+### Changed / 变更
+- In *By extension* mode the chart no longer shows the category legend (it only applies to *By category*) and no longer reuses a stale category highlight. / 「按扩展名」模式下,图表不再显示类别图例,也不会沿用之前选过的类别高亮。
+
 ## [0.15.0] - 2026-11-06
 
 ### Added / 新增

@@ -62,11 +62,82 @@ extension ViewModel {
         guard viewMode == .types, typeGrouping == .byExtension, let cur = current else {
             extStats = []
             extSmallBytes = 0
+            refreshExtHighlight()
             return
         }
         let r = ExtStats.compute(cur)
         extStats = r.stats
         extSmallBytes = r.small
+        refreshExtHighlight()
+    }
+
+    /// 算出环形图里每个节点包含多少所选扩展名的文件,用来高亮它的分布
+    func refreshExtHighlight() {
+        guard viewMode == .types, typeGrouping == .byExtension,
+              let e = selectedExt, let cur = current else {
+            extHighlight = [:]
+            return
+        }
+        var d: [UUID: Int64] = [:]
+        @discardableResult
+        func walk(_ n: Node) -> Int64 {
+            if n.isAggregate { return 0 }
+            if !n.isDir {
+                let b: Int64 = extKey(n.url) == e ? n.size : 0
+                d[n.id] = b
+                return b
+            }
+            var sum: Int64 = 0
+            for c in n.children { sum += walk(c) }
+            d[n.id] = sum
+            return sum
+        }
+        walk(cur)
+        extHighlight = d
+        extHighlightColor = extStats.first { $0.ext == e }?.category.color ?? appAccent
+    }
+}
+
+extension SunburstLayout {
+    /// 选中某个扩展名时的扇形颜色:包含的该扩展名文件越多越鲜艳,没有的变灰变淡
+    static func extColor(_ s: Segment, hovered: Bool, bytes: Int64, color: Color) -> Color {
+        if s.node.isAggregate { return Color(white: 0.5).opacity(0.12) }
+        if bytes <= 0 { return Color(white: 0.5).opacity(hovered ? 0.35 : 0.16) }
+        let share = Double(bytes) / Double(max(s.node.size, 1))
+        return color.opacity(min(1.0, 0.4 + 0.6 * share + (hovered ? 0.15 : 0)))
+    }
+}
+
+/// 环形图下方的提示条:正在高亮哪个扩展名,点 ✕ 取消
+struct ExtHighlightChip: View {
+    @ObservedObject var vm: ViewModel
+
+    var body: some View {
+        if let e = vm.selectedExt {
+            let stat = vm.extStats.first { $0.ext == e }
+            HStack(spacing: 6) {
+                Circle().fill(vm.extHighlightColor).frame(width: 8, height: 8)
+                Text(tr("高亮 \(extLabel(e))", "Highlighting \(extLabel(e))"))
+                    .font(.caption)
+                if let s = stat {
+                    Text("· " + tr("\(s.count) 个文件 · \(formatSize(s.bytes))",
+                                   "\(s.count) file\(s.count == 1 ? "" : "s") · \(formatSize(s.bytes))"))
+                        .font(.caption.monospacedDigit())
+                        .foregroundStyle(.secondary)
+                }
+                Button {
+                    vm.selectedExt = nil
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                }
+                .buttonStyle(.borderless)
+                .help(tr("取消高亮", "Clear highlight"))
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 4)
+            .background(.regularMaterial, in: Capsule())
+            .padding(.bottom, 8)
+        }
     }
 }
 
