@@ -253,6 +253,14 @@ final class ViewModel: ObservableObject {
     @Published var hogs: [HogItem] = []         // “占用大户”列表
     @Published var hogsLoading = false
     @Published var scanStopped = false          // 扫描被手动停止,当前结果不完整
+    @Published var dupGroups: [DupGroup] = []   // 重复文件查找结果
+    @Published var dupState: DupState = .idle
+    @Published var dupStatus = ""
+    @Published var dupMinSizeMB = 1
+    @Published var dupStopped = false
+    var dupScope: URL?
+    var dupJob: DupJob?
+    var dupTimer: Timer?
     @Published var hovered: Node?
     @Published var scanning = false
     @Published var scannedBytes: Int64 = 0
@@ -405,6 +413,7 @@ final class ViewModel: ObservableObject {
         refreshTopFiles()
         saveCache()
         if !hogs.isEmpty { refreshHogs() }
+        if !dupGroups.isEmpty { pruneDuplicates() }
         objectWillChange.send()
         if !failures.isEmpty { errorMessage = failures.joined(separator: "\n") }
     }

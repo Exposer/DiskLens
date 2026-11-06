@@ -16,6 +16,7 @@ A native macOS disk-usage analyzer built with SwiftUI. See at a glance what is e
 - **Color by type** – in *File Types* mode the chart is colored by dominant file type; pick a type in the legend to highlight where it lives and fade out everything else.
 - **Purgeable space** – the bottom bar splits the startup volume into *used*, *purgeable* and *free*, so you can tell what macOS can reclaim by itself.
 - **Space hogs** – a dedicated tab that measures well-known space eaters (Xcode DerivedData / device support / archives, Homebrew, npm, Yarn, pnpm, CocoaPods, Gradle, pip, Cargo, Docker, iOS backups, caches, logs, Trash…), tells you which are safe to clean, shows the recommended cleanup command where one exists, and can add all the safe ones to the Collector in one click.
+- **Duplicate finder** – finds identical files in the folder you are viewing (size → quick hash → full SHA-256, all CPU cores). Review each group, keep one copy, and send the rest to the Collector; at least one copy per group always stays. Hard links, app bundles, `.git`, `node_modules` and `~/Library` are skipped.
 - **Stop scan** – cancel a running scan at any time; what was scanned so far is shown but flagged as incomplete and is never saved.
 - **Saved scan results** – each scan is saved to `~/Library/Application Support/DiskLens/`, and the app reopens instantly with the last result (with a banner showing when it was scanned and a *Rescan* button). Items you move to the Trash are removed from the saved result too.
 - **English / 中文** – switch the interface language from the toolbar (🌐); your choice is remembered, and the default follows the system language.
@@ -100,6 +101,7 @@ make_app.sh            Builds DiskLens.app
 - **按类型着色**:在「文件类型」模式下,环形图按主要文件类型着色;在图例里选一个类型,就能高亮它分布在哪里,其余部分变淡。
 - **可清除空间**:底部容量条把启动磁盘分成「已用」「可清除」「空闲」三段,让你知道哪些空间 macOS 会自动回收。
 - **占用大户**:专门的一页,统计 Xcode(DerivedData / 设备支持 / 归档)、Homebrew、npm、Yarn、pnpm、CocoaPods、Gradle、pip、Cargo、Docker、iOS 备份、缓存、日志、废纸篓等常见占空间的位置,标明哪些可以放心清理,有推荐命令的会一并给出,还能一键把所有「可清理」项加入收集器。
+- **重复文件查找**:在当前查看的文件夹里查找内容完全相同的文件(先比大小,再快速哈希,最后完整 SHA-256,多核并行)。逐组查看,保留一份,其余送进收集器;每组始终至少保留一份。硬链接、应用包、`.git`、`node_modules` 和 `~/Library` 不在查找范围内。
 - **停止扫描**:扫描过程中随时可以停止,已扫到的部分会显示出来,但会标明结果不完整,也不会保存。
 - **保存扫描结果**:每次扫描后的结果会保存到 `~/Library/Application Support/DiskLens/`,下次打开 App 直接载入上次的结果,顶部有横幅提示扫描时间和「重新扫描」按钮。移到废纸篓的项目也会同步从已保存的结果里去掉。
 - **中英文切换**:在工具栏的 🌐 菜单里切换界面语言,选择会被记住,默认跟随系统语言。
@@ -153,6 +155,10 @@ Sources/DiskLens/
 ├── Model.swift        扫描器、数据模型、环形图布局、ViewModel
 ├── Views.swift        主窗口、文件列表、收集器、环形图
 ├── Categories.swift   文件类型分类、按类型着色、图例
+├── Hogs.swift         占用大户
+├── Duplicates.swift   重复文件查找
+├── Persistence.swift  保存扫描结果
+├── Settings.swift     语言、配色、偏好设置
 └── Capacity.swift     已用 / 可清除 / 空闲 容量条
 Resources/AppIcon.png  1024×1024 应用图标源文件
 make_app.sh            打包 DiskLens.app

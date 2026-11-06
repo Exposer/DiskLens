@@ -395,6 +395,8 @@ struct FileListView: View {
                     .padding(6)
             } else if vm.viewMode == .hogs {
                 HogListView(vm: vm)
+            } else if vm.viewMode == .dups {
+                DupListView(vm: vm)
             } else {
                 CategoryListView(vm: vm, node: node)
             }
