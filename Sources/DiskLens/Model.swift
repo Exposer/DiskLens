@@ -146,8 +146,10 @@ struct Segment {
     let node: Node
     let level: Int       // 1 = 最内圈
     let a0: Double       // 弧度,0 在正上方,顺时针
-    let a1: Double
+    var a1: Double
     let hue: Double
+    let cats: [Int64]    // 该节点按文件类型的字节数(用于“按类型着色”)
+    let dominant: Category
 }
 
 enum SunburstLayout {
@@ -155,7 +157,7 @@ enum SunburstLayout {
 
     static func segments(for root: Node) -> [Segment] {
         var out: [Segment] = []
-        func walk(_ n: Node, _ level: Int, _ a0: Double, _ a1: Double, _ hue: Double?) {
+        func walk(_ n: Node, _ level: Int, _ a0: Double, _ a1: Double, _ hue: Double?, _ inApp: Bool) {
             guard level <= maxLevel, n.size > 0 else { return }
             var a = a0
             for (i, c) in n.children.enumerated() {
@@ -163,11 +165,19 @@ enum SunburstLayout {
                 defer { a += span }
                 if span < 0.01 { continue }          // 太窄的扇形不画
                 let h = hue ?? fmod(0.58 + Double(i) * 0.137, 1.0)
-                out.append(Segment(node: c, level: level, a0: a, a1: a + span, hue: h))
-                walk(c, level + 1, a, a + span, h)
+                let totals = c.categoryTotals(inApp: inApp)
+                var best = Category.other
+                var bestBytes: Int64 = 0
+                for cat in Category.allCases where totals[cat.rawValue] > bestBytes {
+                    best = cat; bestBytes = totals[cat.rawValue]
+                }
+                out.append(Segment(node: c, level: level, a0: a, a1: a + span, hue: h,
+                                   cats: totals, dominant: best))
+                let childInApp = inApp || (c.isDir && c.url.pathExtension.lowercased() == "app")
+                walk(c, level + 1, a, a + span, h, childInApp)
             }
         }
-        walk(root, 1, 0, 2 * .pi, nil)
+        walk(root, 1, 0, 2 * .pi, nil, root.isInsideApp)
         return out
     }
 

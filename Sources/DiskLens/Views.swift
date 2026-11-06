@@ -435,11 +435,14 @@ struct SunburstView: View {
                         let limit = eased * 2 * Double.pi
                         for s in vm.segments {
                             if s.a0 >= limit { continue }
-                            let clipped = Segment(node: s.node, level: s.level,
-                                                  a0: s.a0, a1: min(s.a1, limit), hue: s.hue)
+                            var clipped = s
+                            clipped.a1 = min(s.a1, limit)
                             let path = g.path(for: clipped)
                             let isHover = vm.hovered === s.node
-                            ctx.fill(path, with: .color(SunburstLayout.color(s, hovered: isHover)))
+                            let fillColor = vm.viewMode == .types
+                                ? SunburstLayout.typeColor(s, hovered: isHover, selected: vm.selectedCategory)
+                                : SunburstLayout.color(s, hovered: isHover)
+                            ctx.fill(path, with: .color(fillColor))
                             ctx.stroke(path, with: .color(Color(nsColor: .windowBackgroundColor)), lineWidth: 1)
                         }
                     }
@@ -482,6 +485,9 @@ struct SunburstView: View {
                     if vm.hovered != nil { vm.hovered = nil }
                 }
             }
+        }
+        .overlay(alignment: .bottom) {
+            if vm.viewMode == .types { TypeLegend(vm: vm, node: current) }
         }
     }
 

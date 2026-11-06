@@ -95,6 +95,58 @@ extension Node {
     }
 }
 
+// MARK: - 环形图按类型着色
+
+extension SunburstLayout {
+    /// “文件类型”模式下的扇形颜色:
+    /// - 未选类型:按该节点里占比最大的类型着色
+    /// - 选了某一类型:该类型占比越高越鲜艳,没有该类型的扇形变灰变淡
+    static func typeColor(_ s: Segment, hovered: Bool, selected: Category?) -> Color {
+        if s.node.isAggregate { return Color(white: hovered ? 0.72 : 0.55).opacity(selected == nil ? 1 : 0.2) }
+        if let sel = selected {
+            let share = Double(s.cats[sel.rawValue]) / Double(max(s.node.size, 1))
+            if share <= 0.001 { return Color(white: 0.5).opacity(hovered ? 0.35 : 0.16) }
+            return sel.color.opacity(min(1.0, 0.3 + 0.7 * share + (hovered ? 0.15 : 0)))
+        }
+        let fade = max(0.6, 0.98 - 0.1 * Double(s.level - 1))
+        return s.dominant.color.opacity(hovered ? 1.0 : fade)
+    }
+}
+
+/// 环形图下方的图例:点击某类型 = 高亮该类型在哪里,再点一次取消
+struct TypeLegend: View {
+    @ObservedObject var vm: ViewModel
+    let node: Node
+
+    var body: some View {
+        let totals = node.categoryTotals(inApp: node.isInsideApp)
+        let items = Category.allCases
+            .filter { totals[$0.rawValue] > 0 }
+            .sorted { totals[$0.rawValue] > totals[$1.rawValue] }
+        HStack(spacing: 6) {
+            ForEach(items) { cat in
+                let on = vm.selectedCategory == cat
+                Button {
+                    vm.selectedCategory = on ? nil : cat
+                } label: {
+                    HStack(spacing: 4) {
+                        Circle().fill(cat.color).frame(width: 8, height: 8)
+                        Text(cat.title.components(separatedBy: " ").first ?? cat.title)
+                            .font(.caption)
+                    }
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3)
+                    .background(Capsule().fill(on ? cat.color.opacity(0.25) : Color.clear))
+                    .overlay(Capsule().strokeBorder(on ? cat.color : Color.secondary.opacity(0.3), lineWidth: 1))
+                }
+                .buttonStyle(.plain)
+                .help("\(cat.title) · \(formatSize(totals[cat.rawValue]))")
+            }
+        }
+        .padding(.bottom, 8)
+    }
+}
+
 // MARK: - 类型汇总视图
 
 struct CategoryListView: View {
