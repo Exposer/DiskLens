@@ -248,15 +248,24 @@ struct RingGeometry {
 @MainActor
 final class ViewModel: ObservableObject {
     @Published var root: Node?
-    @Published var current: Node? { didSet { rebuild(); startReveal(); refreshTopFiles(); refreshBigFiles() } }
+    @Published var current: Node? {
+        didSet { rebuild(); startReveal(); refreshTopFiles(); refreshBigFiles(); refreshExtStats() }
+    }
     @Published var viewMode: ViewMode = .folders {
         didSet {
             refreshTopFiles()
             refreshBigFiles()
+            refreshExtStats()
             if viewMode == .hogs && hogs.isEmpty && !hogsLoading { refreshHogs() }
         }
     }
     @Published var selectedCategory: Category? { didSet { refreshTopFiles() } }
+    @Published var typeGrouping: TypeGrouping = .category {
+        didSet { refreshTopFiles(); refreshExtStats() }
+    }
+    @Published var selectedExt: String? { didSet { refreshTopFiles() } }   // "" = 没有扩展名
+    @Published var extStats: [ExtStat] = []     // 按扩展名统计
+    @Published var extSmallBytes: Int64 = 0     // 被合并的小文件总大小
     @Published var topFiles: [Node] = []        // “按类型”模式下,所选类型里最大的文件
     @Published var hogs: [HogItem] = []         // “占用大户”列表
     @Published var hogsLoading = false
@@ -321,7 +330,7 @@ final class ViewModel: ObservableObject {
         scanner = s
         target = url
         root = nil; current = nil; hovered = nil
-        collected = []; scanningPath = ""; selectedCategory = nil
+        collected = []; scanningPath = ""; selectedCategory = nil; selectedExt = nil
         isCached = false; scanDate = nil; scanStopped = false
         UserDefaults.standard.set(url.path, forKey: "lastTarget")
         scanning = true
@@ -428,6 +437,7 @@ final class ViewModel: ObservableObject {
         if !hogs.isEmpty { refreshHogs() }
         if !dupGroups.isEmpty { pruneDuplicates() }
         refreshBigFiles()
+        refreshExtStats()
         objectWillChange.send()
         if !failures.isEmpty { errorMessage = failures.joined(separator: "\n") }
     }
@@ -436,7 +446,14 @@ final class ViewModel: ObservableObject {
 
     /// 当前目录下、所选类型里最大的文件(仅统计已保留的 ≥2MB 的文件)
     func refreshTopFiles() {
-        guard viewMode == .types, let cat = selectedCategory, let cur = current else {
+        guard viewMode == .types, let cur = current else {
+            topFiles = []
+            return
+        }
+        // 按类别:选中的类别;按扩展名:选中的扩展名
+        let cat: Category? = typeGrouping == .category ? selectedCategory : nil
+        let ext: String? = typeGrouping == .byExtension ? selectedExt : nil
+        guard cat != nil || ext != nil else {
             topFiles = []
             return
         }
@@ -445,8 +462,10 @@ final class ViewModel: ObservableObject {
             for c in n.children where !c.isAggregate {
                 if c.isDir {
                     walk(c, inApp: inApp || c.url.pathExtension.lowercased() == "app")
-                } else if Category.of(c.url, inApp: inApp) == cat {
-                    out.append(c)
+                } else if let cat {
+                    if Category.of(c.url, inApp: inApp) == cat { out.append(c) }
+                } else if let ext {
+                    if extKey(c.url) == ext { out.append(c) }
                 }
             }
         }

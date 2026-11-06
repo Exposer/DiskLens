@@ -135,6 +135,22 @@ enum ReportBuilder {
         }
         md.append("")
 
+        // 按扩展名(前 20)
+        let ext = ExtStats.compute(root)
+        if !ext.stats.isEmpty {
+            md.append("## " + tr("按扩展名(前 20)", "By Extension (top 20)"))
+            md.append("")
+            md.append(row([tr("扩展名", "Extension"), tr("文件数", "Files"), tr("大小", "Size"), tr("占比", "Share")]))
+            md.append("|---|---:|---:|---:|")
+            for s in ext.stats.prefix(20) {
+                md.append("| \(esc(s.label)) | \(s.count) | \(formatSize(s.bytes)) | \(pct(s.bytes, total)) |")
+            }
+            if ext.small > 0 {
+                md.append("| \(tr("小文件(每项不足 2 MB)", "Small items (under 2 MB each)")) | - | \(formatSize(ext.small)) | \(pct(ext.small, total)) |")
+            }
+            md.append("")
+        }
+
         // 最大的一级目录
         let top = root.children.filter { !$0.isAggregate }.prefix(20)
         if !top.isEmpty {

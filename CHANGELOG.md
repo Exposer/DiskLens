@@ -8,6 +8,16 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions `0.1.0`
 
 ## [Unreleased]
 
+## [0.15.0] - 2026-11-06
+
+### Added / 新增
+- **Usage by file extension**: the *Types* tab now has a *By category / By extension* switch. *By extension* ranks every extension (`.mp4`, `.dmg`, `.swift`, …) by total size with file count, percentage and a bar, plus a filter box. Click an extension to list its 200 largest files, with the usual Collector / Reveal / Trash actions. / **按扩展名统计占用**:「文件类型」页新增「按类别 / 按扩展名」切换。「按扩展名」按总大小排列所有扩展名(`.mp4`、`.dmg`、`.swift` 等),显示文件数、占比和占比条,带筛选框;点一个扩展名可列出该类型里最大的 200 个文件,同样支持加入收集器、在 Finder 中显示、移到废纸篓。
+- Files of 2 MB or more are counted per extension exactly; the smaller files merged during the scan appear as one *Small items* row with their exact total size. / 2 MB 以上的文件按扩展名精确统计;扫描时合并掉的小文件显示成一行「小文件」,总大小是准确的。
+- The Markdown report gets a *By Extension (top 20)* table. / Markdown 报告新增「按扩展名(前 20)」表格。
+
+### Fixed / 修复
+- After picking a file type on the *Types* tab, switching to *Largest*, *Hogs* or *Dupes* kept showing that type's file list instead of the tab you chose. The side panel now switches strictly by tab. / 在「文件类型」页点进某个类型后,再切到「大文件」「占用大户」「重复文件」,仍然显示那个类型的文件列表而不是所选标签;现在侧边栏严格按标签切换。
+
 ## [0.14.0] - 2026-11-06
 
 ### Added / 新增

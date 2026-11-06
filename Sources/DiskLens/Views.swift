@@ -357,7 +357,8 @@ struct FileListView: View {
             .padding(.horizontal, 12)
             .padding(.bottom, 8)
             Divider()
-            if vm.viewMode == .folders {
+            switch vm.viewMode {
+            case .folders:
                 ScrollView {
                     LazyVStack(spacing: 0) {
                         ForEach(node.children) { c in
@@ -365,43 +366,84 @@ struct FileListView: View {
                         }
                     }
                 }
-            } else if let cat = vm.selectedCategory {
-                HStack {
-                    Button {
-                        vm.selectedCategory = nil
-                    } label: {
-                        Label(tr("全部类型", "All Types"), systemImage: "chevron.left")
-                    }
-                    .buttonStyle(.link)
-                    Spacer()
-                    Image(systemName: cat.icon).foregroundStyle(cat.color)
-                    Text(tr("\(cat.title) · 最大的 \(vm.topFiles.count) 个文件",
-                            "\(cat.title) · Top \(vm.topFiles.count) files"))
-                        .font(.callout)
-                        .lineLimit(1)
-                }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 6)
-                Divider()
-                ScrollView {
-                    LazyVStack(spacing: 0) {
-                        ForEach(vm.topFiles) { c in
-                            row(c).help(c.url.path)
-                        }
-                    }
-                }
-                Text(tr("只统计 2MB 以上的文件", "Only files of 2 MB or more are listed"))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .padding(6)
-            } else if vm.viewMode == .big {
+            case .types:
+                typesPanel
+            case .big:
                 BigFileListView(vm: vm, node: node)
-            } else if vm.viewMode == .hogs {
+            case .hogs:
                 HogListView(vm: vm)
-            } else if vm.viewMode == .dups {
+            case .dups:
                 DupListView(vm: vm)
-            } else {
+            }
+        }
+    }
+
+    // MARK: 「文件类型」页:按类别 / 按扩展名,点进去看该类型里最大的文件
+
+    private var detailTitle: (icon: String, color: Color, title: String)? {
+        switch vm.typeGrouping {
+        case .category:
+            guard let cat = vm.selectedCategory else { return nil }
+            return (cat.icon, cat.color, cat.title)
+        case .byExtension:
+            guard let e = vm.selectedExt else { return nil }
+            return ("doc", appAccent, extLabel(e))
+        }
+    }
+
+    private func clearSelection() {
+        switch vm.typeGrouping {
+        case .category: vm.selectedCategory = nil
+        case .byExtension: vm.selectedExt = nil
+        }
+    }
+
+    @ViewBuilder
+    private var typesPanel: some View {
+        if let d = detailTitle {
+            HStack {
+                Button {
+                    clearSelection()
+                } label: {
+                    Label(vm.typeGrouping == .category ? tr("全部类型", "All Types") : tr("全部扩展名", "All Extensions"),
+                          systemImage: "chevron.left")
+                }
+                .buttonStyle(.link)
+                Spacer()
+                Image(systemName: d.icon).foregroundStyle(d.color)
+                Text(tr("\(d.title) · 最大的 \(vm.topFiles.count) 个文件",
+                        "\(d.title) · Top \(vm.topFiles.count) files"))
+                    .font(.callout)
+                    .lineLimit(1)
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 6)
+            Divider()
+            ScrollView {
+                LazyVStack(spacing: 0) {
+                    ForEach(vm.topFiles) { c in
+                        row(c).help(c.url.path)
+                    }
+                }
+            }
+            Text(tr("只统计 2MB 以上的文件", "Only files of 2 MB or more are listed"))
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .padding(6)
+        } else {
+            Picker("", selection: $vm.typeGrouping) {
+                ForEach(TypeGrouping.allCases, id: \.self) { Text($0.title).tag($0) }
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .padding(.horizontal, 12)
+            .padding(.vertical, 6)
+            Divider()
+            switch vm.typeGrouping {
+            case .category:
                 CategoryListView(vm: vm, node: node)
+            case .byExtension:
+                ExtensionListView(vm: vm, node: node)
             }
         }
     }
