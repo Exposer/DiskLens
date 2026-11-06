@@ -15,7 +15,7 @@ A native macOS disk-usage analyzer built with SwiftUI. See at a glance what is e
 - **File type breakdown** – switch the side panel to *File Types* to see video, audio, images, documents, archives/installers/disk images, apps, code and other, with a stacked overview bar. Click a type to list its largest files.
 - **Color by type** – in *File Types* mode the chart is colored by dominant file type; pick a type in the legend to highlight where it lives and fade out everything else.
 - **Purgeable space** – the bottom bar splits the startup volume into *used*, *purgeable* and *free*, so you can tell what macOS can reclaim by itself.
-- **Usage by extension** – inside the *Types* tab, switch to *By extension* to rank every extension (`.mp4`, `.dmg`, `.swift`…) by size, filter them, and click one to see its largest files — the sunburst lights up where that extension lives.
+- **Usage by extension** – inside the *Types* tab, switch to *By extension* to rank every extension (`.mp4`, `.dmg`, `.swift`…) by size, filter them, and click one to see its largest files — the sunburst lights up where that extension lives. At the scan root the numbers are exact and include every small file.
 - **Export reports** – export a Markdown report (capacity, file-type breakdown, largest folders and files, space hogs, duplicates, collector) or a CSV list of every scanned file ≥ 2 MB. Reports follow the UI language and show your home folder as `~`.
 - **Largest files** – a leaderboard of the biggest files in the folder you are viewing (Top 50 / 100 / 200, filterable by file type). Filter to files you haven't modified for 3 months, 6 months, 1 year or 2 years to find big files you no longer use, or sort oldest-first. Every row has Collector, reveal and Trash actions.
 - **Space hogs** – a dedicated tab that measures well-known space eaters (Xcode DerivedData / device support / archives, Homebrew, npm, Yarn, pnpm, CocoaPods, Gradle, pip, Cargo, Docker, iOS backups, caches, logs, Trash…), tells you which are safe to clean, shows the recommended cleanup command where one exists, and can add all the safe ones to the Collector in one click.
@@ -110,7 +110,7 @@ make_app.sh            Builds DiskLens.app
 - **按文件类型汇总**:把侧边栏切到「文件类型」,可以看到视频、音频、图片、文档、压缩包/安装包/磁盘映像、应用程序、代码和其他的占比,并带一条堆叠总览条。点某个类型,列出该类型里最大的文件。
 - **按类型着色**:在「文件类型」模式下,环形图按主要文件类型着色;在图例里选一个类型,就能高亮它分布在哪里,其余部分变淡。
 - **可清除空间**:底部容量条把启动磁盘分成「已用」「可清除」「空闲」三段,让你知道哪些空间 macOS 会自动回收。
-- **按扩展名统计**:在「文件类型」页切到「按扩展名」,按大小排列所有扩展名(`.mp4`、`.dmg`、`.swift` 等),可筛选,点一个就能看它最大的文件,环形图会高亮它分布在哪里。
+- **按扩展名统计**:在「文件类型」页切到「按扩展名」,按大小排列所有扩展名(`.mp4`、`.dmg`、`.swift` 等),可筛选,点一个就能看它最大的文件,环形图会高亮它分布在哪里。在扫描根目录上数字是精确的,包含所有小文件。
 - **导出报告**:可导出 Markdown 报告(容量、文件类型汇总、最大的文件夹和文件、占用大户、重复文件、收集器),或所有 2 MB 以上文件的 CSV 清单。报告语言跟随界面,个人文件夹显示为 `~`。
 - **大文件排行榜**:当前文件夹里最大的文件排行(前 50 / 100 / 200 个,可按文件类型筛选)。可筛选「超过 3 个月 / 6 个月 / 1 年 / 2 年没修改」的文件,找出不再使用的大文件,也可以按最久未修改排序。每一行都能加入收集器、在 Finder 中显示或移到废纸篓。
 - **占用大户**:专门的一页,统计 Xcode(DerivedData / 设备支持 / 归档)、Homebrew、npm、Yarn、pnpm、CocoaPods、Gradle、pip、Cargo、Docker、iOS 备份、缓存、日志、废纸篓等常见占空间的位置,标明哪些可以放心清理,有推荐命令的会一并给出,还能一键把所有「可清理」项加入收集器。

@@ -8,6 +8,15 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions `0.1.0`
 
 ## [Unreleased]
 
+## [0.17.0] - 2026-11-06
+
+### Added / 新增
+- **Exact extension totals for the scan root**: while scanning, DiskLens now records the exact size and file count of every extension across *all* files, including the small ones that are merged in the tree (e.g. hundreds of thousands of `.js` files in `node_modules`). On the scan root, *Types → By extension* shows these exact numbers; inside a subfolder it still uses the ≥ 2 MB approximation, with a note saying so. / **扫描根目录的精确扩展名总表**:扫描时记录**所有**文件(包括树里被合并掉的小文件,比如 `node_modules` 里几十万个 `.js`)按扩展名的精确大小和文件数。在扫描根目录上,「文件类型 → 按扩展名」显示这份精确数据;进到子文件夹后仍用 ≥ 2 MB 的近似统计,并有文字说明。
+- The exact table is saved with the scan result, and the Markdown report uses it (with a note when it isn't available). / 精确总表随扫描结果一起保存;Markdown 报告也使用它(没有时会注明)。
+
+### Changed / 变更
+- Scan results saved by the previous version can still be loaded; they just don't have the exact table until you rescan. / 上一版保存的扫描结果仍然可以载入,只是在重新扫描之前没有精确总表。
+
 ## [0.16.0] - 2026-11-06
 
 ### Added / 新增

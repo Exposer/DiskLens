@@ -136,9 +136,16 @@ enum ReportBuilder {
         md.append("")
 
         // 按扩展名(前 20)
-        let ext = ExtStats.compute(root)
+        let ext = ExtStats.stats(for: root, root: root)
         if !ext.stats.isEmpty {
             md.append("## " + tr("按扩展名(前 20)", "By Extension (top 20)"))
+            md.append("")
+            if ext.exact {
+                md.append("> " + tr("精确统计,包含扫描范围内的所有文件。", "Exact totals, including every file in the scan."))
+            } else {
+                md.append("> " + tr("这份结果没有精确总表,只统计了 2 MB 以上的文件;重新扫描后可得到精确统计。",
+                                    "This result has no exact totals, so only files of 2 MB or more are counted; rescan for exact figures."))
+            }
             md.append("")
             md.append(row([tr("扩展名", "Extension"), tr("文件数", "Files"), tr("大小", "Size"), tr("占比", "Share")]))
             md.append("|---|---:|---:|---:|")

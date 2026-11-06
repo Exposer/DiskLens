@@ -31,7 +31,30 @@ struct ExtStat: Identifiable {
     var label: String { extLabel(ext) }
 }
 
+/// 某个扩展名的累计大小和文件数
+struct ExtTotal: Codable, Sendable {
+    var bytes: Int64 = 0
+    var count: Int = 0
+    mutating func add(_ b: Int64) { bytes += b; count += 1 }
+}
+
 enum ExtStats {
+    /// 统计某个文件夹的扩展名分布。
+    /// 在扫描根目录上,使用扫描时记录的**精确**总表(包含所有小文件);
+    /// 在子文件夹里,只能用扫描树统计 2MB 以上的文件,小文件合并成一行(exact = false)。
+    static func stats(for cur: Node, root: Node?) -> (stats: [ExtStat], small: Int64, exact: Bool) {
+        if let root, cur === root, let totals = root.extTotals {
+            let list = totals.map { (key, t) -> ExtStat in
+                let sample = URL(fileURLWithPath: key.isEmpty ? "/x" : "/x.\(key)")
+                return ExtStat(ext: key, bytes: t.bytes, count: t.count,
+                               category: Category.of(sample, inApp: false))
+            }
+            return (list.sorted { $0.bytes > $1.bytes }, 0, true)
+        }
+        let r = compute(cur)
+        return (r.stats, r.small, false)
+    }
+
     /// 统计某个文件夹整棵子树里 2MB 以上文件的扩展名分布;small = 被合并的小文件/小文件夹的总大小
     static func compute(_ cur: Node) -> (stats: [ExtStat], small: Int64) {
         var dict: [String: ExtStat] = [:]
@@ -65,9 +88,10 @@ extension ViewModel {
             refreshExtHighlight()
             return
         }
-        let r = ExtStats.compute(cur)
+        let r = ExtStats.stats(for: cur, root: root)
         extStats = r.stats
         extSmallBytes = r.small
+        extExact = r.exact
         refreshExtHighlight()
     }
 
@@ -137,6 +161,7 @@ struct ExtHighlightChip: View {
             .padding(.vertical, 4)
             .background(.regularMaterial, in: Capsule())
             .padding(.bottom, 8)
+            .help(tr("图上只高亮 2MB 以上的文件", "The chart only highlights files of 2 MB or more"))
         }
     }
 }
@@ -183,8 +208,11 @@ struct ExtensionListView: View {
                         }
                     }
                 }
-                Text(tr("2MB 以上的文件按扩展名精确统计;更小的文件在扫描时已合并,只显示总大小。扩展名不区分大小写。",
-                        "Files of 2 MB or more are counted per extension; smaller ones were merged during the scan and only their total size is shown. Extensions are case-insensitive."))
+                Text(vm.extExact
+                     ? tr("这是整个扫描范围的精确统计,包含所有小文件。点进去只列出 2MB 以上的文件。扩展名不区分大小写。",
+                          "Exact totals for the whole scan, including every small file. Opening one lists only files of 2 MB or more. Extensions are case-insensitive.")
+                     : tr("子文件夹里只有 2MB 以上的文件能按扩展名统计,更小的文件合并成一行。回到扫描根目录可看到包含所有小文件的精确统计。",
+                          "Inside a subfolder only files of 2 MB or more are counted per extension; smaller ones are merged into one row. Go back to the scan root for exact totals including every small file."))
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .padding(6)

@@ -20,6 +20,8 @@ final class Node: Identifiable, @unchecked Sendable {
     var cats: [Int64] = []
     /// 文件的最后修改时间(只记录文件,目录为 nil)
     var mod: Date?
+    /// 仅扫描根目录:整个扫描范围内按扩展名的精确统计(包含所有小文件)
+    var extTotals: [String: ExtTotal]?
 
     init(url: URL, name: String? = nil, isDir: Bool, size: Int64 = 0) {
         self.url = url
@@ -49,6 +51,19 @@ final class DiskScanner: @unchecked Sendable {
     ]
 
     private var path = ""
+    private var extTotals: [String: ExtTotal] = [:]
+    /// 扫描到的所有文件按扩展名的精确总表(每个目录合并一次,开销很小)
+    var exactExts: [String: ExtTotal] { lock.lock(); defer { lock.unlock() }; return extTotals }
+    private func mergeExts(_ local: [String: ExtTotal]) {
+        lock.lock()
+        for (k, v) in local {
+            var t = extTotals[k] ?? ExtTotal()
+            t.bytes += v.bytes
+            t.count += v.count
+            extTotals[k] = t
+        }
+        lock.unlock()
+    }
     var scannedBytes: Int64 { lock.lock(); defer { lock.unlock() }; return bytes }
     /// 当前正在扫描的目录(用于扫描动画下方的实时显示)
     var currentPath: String { lock.lock(); defer { lock.unlock() }; return path }
@@ -77,6 +92,7 @@ final class DiskScanner: @unchecked Sendable {
             for i in 0..<Category.count { cats[i] += t[i] }
         }
         root.cats = cats
+        root.extTotals = exactExts
         finish(root, kids: top)
         return root
     }
@@ -102,7 +118,11 @@ final class DiskScanner: @unchecked Sendable {
     private func build(_ url: URL, isDir: Bool, size: Int64, mod: Date? = nil, inApp: Bool) -> Node {
         let node = Node(url: url, isDir: isDir, size: size)
         node.mod = isDir ? nil : mod
-        if !isDir { add(size); return node }
+        if !isDir {
+            add(size)
+            mergeExts([extKey(url): ExtTotal(bytes: size, count: 1)])
+            return node
+        }
         if isCancelled { return node }
         lock.lock(); path = url.path; lock.unlock()
 
@@ -111,6 +131,7 @@ final class DiskScanner: @unchecked Sendable {
         var cats = [Int64](repeating: 0, count: Category.count)
         var kids: [Node] = []
         var fileBytes: Int64 = 0
+        var localExts: [String: ExtTotal] = [:]
         for e in list(url) {
             if isCancelled { break }
             if e.isDir {
@@ -121,6 +142,7 @@ final class DiskScanner: @unchecked Sendable {
                 kids.append(c)
             } else {
                 fileBytes += e.size
+                localExts[extKey(e.url), default: ExtTotal()].add(e.size)
                 cats[Category.of(e.url, inApp: inApp).rawValue] += e.size
                 let fileNode = Node(url: e.url, isDir: false, size: e.size)
                 fileNode.mod = e.mod
@@ -128,6 +150,7 @@ final class DiskScanner: @unchecked Sendable {
             }
         }
         add(fileBytes)
+        mergeExts(localExts)
         node.cats = cats
         finish(node, kids: kids)
         return node
@@ -268,6 +291,7 @@ final class ViewModel: ObservableObject {
     }
     @Published var extStats: [ExtStat] = []     // 按扩展名统计
     @Published var extSmallBytes: Int64 = 0     // 被合并的小文件总大小
+    @Published var extExact = false             // true = 来自扫描时记录的精确总表(含所有小文件)
     /// 环形图高亮用:每个节点子树里属于所选扩展名的字节数(随所选扩展名 / 当前文件夹刷新)
     var extHighlight: [UUID: Int64] = [:]
     var extHighlightColor: Color = .accentColor

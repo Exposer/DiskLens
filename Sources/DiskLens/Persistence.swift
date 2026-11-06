@@ -11,10 +11,11 @@ struct NodeDTO: Codable {
     var a: Bool?           // 是否“小文件”合并节点
     var k: [NodeDTO]?      // 子节点
     var m: Double?         // 文件的最后修改时间(自 1970 年起的秒数)
+    var x: [String: ExtTotal]?   // 仅根节点:按扩展名的精确总表
 }
 
 struct ScanSnapshot: Codable {
-    var version = 2        // 2:加入了文件修改时间;旧版本的缓存会被忽略并重新扫描
+    var version = 3        // 2:加入文件修改时间;3:加入按扩展名的精确总表。版本 2 的缓存仍可读取,只是没有精确总表
     var path: String       // 被扫描的根目录
     var date: Date
     var root: NodeDTO
@@ -42,7 +43,8 @@ enum ScanStore {
                 c: n.isDir && !n.cats.isEmpty ? n.cats : nil,
                 a: n.isAggregate ? true : nil,
                 k: n.children.isEmpty ? nil : n.children.map { dto($0) },
-                m: n.mod?.timeIntervalSince1970)
+                m: n.mod?.timeIntervalSince1970,
+                x: n.extTotals)
     }
 
     static func node(from dto: NodeDTO, url: URL, parent: Node?) -> Node {
@@ -50,6 +52,7 @@ enum ScanStore {
         n.isAggregate = dto.a == true
         n.cats = dto.c ?? []
         n.mod = dto.m.map { Date(timeIntervalSince1970: $0) }
+        n.extTotals = dto.x
         n.parent = parent
         for k in dto.k ?? [] {
             let childURL = k.a == true ? url : url.appendingPathComponent(k.n, isDirectory: k.d)
@@ -69,7 +72,7 @@ enum ScanStore {
     static func load(path: String) -> (root: Node, date: Date)? {
         guard let data = try? Data(contentsOf: fileURL(for: path)),
               let snap = try? JSONDecoder().decode(ScanSnapshot.self, from: data),
-              snap.version == 2,
+              snap.version == 2 || snap.version == 3,
               snap.path == path,
               // 文件类型数量变了(比如新版本增加了分类),旧缓存作废
               snap.root.c?.count == Category.count else { return nil }
