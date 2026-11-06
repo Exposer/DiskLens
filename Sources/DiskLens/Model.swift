@@ -241,10 +241,11 @@ struct RingGeometry {
 @MainActor
 final class ViewModel: ObservableObject {
     @Published var root: Node?
-    @Published var current: Node? { didSet { rebuild(); startReveal(); refreshTopFiles() } }
+    @Published var current: Node? { didSet { rebuild(); startReveal(); refreshTopFiles(); refreshBigFiles() } }
     @Published var viewMode: ViewMode = .folders {
         didSet {
             refreshTopFiles()
+            refreshBigFiles()
             if viewMode == .hogs && hogs.isEmpty && !hogsLoading { refreshHogs() }
         }
     }
@@ -253,6 +254,9 @@ final class ViewModel: ObservableObject {
     @Published var hogs: [HogItem] = []         // “占用大户”列表
     @Published var hogsLoading = false
     @Published var scanStopped = false          // 扫描被手动停止,当前结果不完整
+    @Published var bigFiles: [BigFile] = []     // 大文件排行榜
+    @Published var bigFilter: Category? { didSet { refreshBigFiles() } }
+    @Published var bigLimit = 100 { didSet { refreshBigFiles() } }
     @Published var dupGroups: [DupGroup] = []   // 重复文件查找结果
     @Published var dupState: DupState = .idle
     @Published var dupStatus = ""
@@ -414,6 +418,7 @@ final class ViewModel: ObservableObject {
         saveCache()
         if !hogs.isEmpty { refreshHogs() }
         if !dupGroups.isEmpty { pruneDuplicates() }
+        refreshBigFiles()
         objectWillChange.send()
         if !failures.isEmpty { errorMessage = failures.joined(separator: "\n") }
     }

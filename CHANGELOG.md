@@ -8,6 +8,15 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions `0.1.0`
 
 ## [Unreleased]
 
+## [0.12.0] - 2026-11-06
+
+### Added / 新增
+- **Largest Files leaderboard** (new *Largest* tab): ranks the biggest files in the folder you are viewing, with rank number, file-type icon, relative path, size bar, and per-row Collector / Reveal in Finder / Trash actions. Filter by file type and choose Top 50 / 100 / 200; shows the total of the listed files. It reads the in-memory scan result, so it opens instantly. / **大文件排行榜**(新增「大文件」页):列出当前文件夹里最大的文件,带名次、类型图标、相对路径、大小占比条,每行可加入收集器、在 Finder 中显示或移到废纸篓。可按文件类型筛选,可选前 50 / 100 / 200 个,并显示合计大小。直接使用内存里的扫描结果,打开即显示。
+
+### Changed / 变更
+- The side panel is wider by default (440 px, up to 600 px) so five tabs fit; the *Duplicates* tab is labelled *Dupes* in English. / 侧边栏默认更宽(440 px,最宽 600 px),以便放下五个标签;英文里「重复文件」标签缩写为 *Dupes*。
+- The leaderboard refreshes automatically after items are moved to the Trash. / 移到废纸篓后,排行榜会自动刷新。
+
 ## [0.11.0] - 2026-11-06
 
 ### Added / 新增

@@ -34,7 +34,7 @@ struct ContentView: View {
                 if let cur = vm.current {
                     HSplitView {
                         FileListView(vm: vm, node: cur)
-                            .frame(minWidth: 300, idealWidth: 360, maxWidth: 520)
+                            .frame(minWidth: 340, idealWidth: 440, maxWidth: 600)
                         SunburstView(vm: vm, current: cur)
                             .frame(minWidth: 420)
                     }
@@ -393,6 +393,8 @@ struct FileListView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .padding(6)
+            } else if vm.viewMode == .big {
+                BigFileListView(vm: vm, node: node)
             } else if vm.viewMode == .hogs {
                 HogListView(vm: vm)
             } else if vm.viewMode == .dups {
