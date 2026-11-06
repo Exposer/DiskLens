@@ -8,6 +8,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions `0.1.0`
 
 ## [Unreleased]
 
+## [0.14.0] - 2026-11-06
+
+### Added / 新增
+- **Export scan report** (new *Export* menu in the toolbar). *Markdown report*: scanned location and time, disk capacity (used / purgeable / free), breakdown by file type, largest top-level folders and files, the 50 largest files with modified dates, plus Space Hogs, Duplicate Files and Collector contents if you have used those pages. *CSV file list*: every scanned file of 2 MB or more (path, name, size in bytes, size, type, modified time), UTF-8 with BOM so Excel and Numbers show Chinese correctly. / **导出扫描报告**(工具栏新增「导出」菜单)。*Markdown 报告*:扫描位置和时间、磁盘容量(已用 / 可清除 / 空闲)、按文件类型汇总、最大的第一层文件夹和文件、带修改时间的 50 个最大文件,以及你用过的「占用大户」「重复文件」和收集器内容。*CSV 文件清单*:扫描到的所有 2 MB 以上的文件(路径、名称、字节数、大小、类型、修改时间),UTF-8 带 BOM,Excel 和 Numbers 能正确显示中文。
+- The report follows the interface language, and your home folder is shown as `~` in paths so a shared report doesn't reveal your user name. / 报告语言跟随界面语言;路径里的个人文件夹显示为 `~`,分享报告时不会暴露用户名。
+
 ## [0.13.0] - 2026-11-06
 
 ### Added / 新增

@@ -150,6 +150,7 @@ struct ContentView: View {
             }
 
             Divider().frame(height: 16)
+            ExportMenu(vm: vm)
             SettingsMenus(onChange: onPrefsChange)
         }
         .padding(.horizontal, 12)
