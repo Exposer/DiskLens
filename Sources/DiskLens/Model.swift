@@ -342,6 +342,11 @@ final class ViewModel: ObservableObject {
             if viewMode == .hogs && hogs.isEmpty && !hogsLoading { refreshHogs() }
         }
     }
+    /// 右侧图表的显示方式(环形图 / 方块图 / 树形列表),记住上次的选择
+    @Published var chartStyle: ChartStyle = ChartStyle(
+        rawValue: UserDefaults.standard.string(forKey: "chartStyle") ?? "") ?? .ring {
+        didSet { UserDefaults.standard.set(chartStyle.rawValue, forKey: "chartStyle") }
+    }
     @Published var selectedCategory: Category? { didSet { refreshTopFiles() } }
     @Published var typeGrouping: TypeGrouping = .category {
         didSet { refreshTopFiles(); refreshExtStats() }

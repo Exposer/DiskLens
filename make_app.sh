@@ -2,7 +2,9 @@
 # 编译并打包成 DiskLens.app,可拖进「应用程序」
 set -e
 cd "$(dirname "$0")"
-swift build -c release
+# 编译产物放在 iCloud 同步范围之外:项目在 Documents 里时,.build 里成千上万个文件被同步会让编译慢到卡住
+BUILD_DIR="${DISKLENS_BUILD_DIR:-$HOME/Library/Caches/disklens-build}"
+swift build -c release --scratch-path "$BUILD_DIR"
 # 先在临时目录里组装并签名:项目放在 Documents / iCloud 里时,File Provider 会给 .app 目录加上
 # 清不掉的扩展属性,导致 codesign 报 "detritus not allowed"。签完再拷回项目目录。
 OUT=DiskLens.app
@@ -10,7 +12,7 @@ STAGE="$(mktemp -d)"
 APP="$STAGE/DiskLens.app"
 rm -rf "$OUT"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
-cp .build/release/DiskLens "$APP/Contents/MacOS/DiskLens"
+cp "$BUILD_DIR/release/DiskLens" "$APP/Contents/MacOS/DiskLens"
 
 # 由 Resources/AppIcon.png (1024x1024) 生成 AppIcon.icns
 ICONSET="$(mktemp -d)/AppIcon.iconset"

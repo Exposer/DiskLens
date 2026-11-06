@@ -9,8 +9,9 @@ A native macOS disk-usage analyzer built with SwiftUI. See at a glance what is e
 ## Features
 
 - **Sunburst chart** – up to 4 rings, click a slice to drill in, click the center to go back up, hover to see name and size. Breadcrumbs for quick navigation.
+- **Three display styles** – switch the right-hand view between the *Ring* chart, a *Squares* treemap (nested squarified rectangles; click to drill in, *Up* to go back) and an expandable *Tree* list with size bars and percentages. Your choice is remembered.
 - **Fast scanning** – top-level folders are scanned in parallel on all CPU cores. Small items (< 2 MB) are merged into a single node to keep memory low.
-- **Scan animation** – a live animated ring with running byte count and the directory currently being scanned; the chart sweeps open when the scan finishes.
+- **Scan animation** – a spinning disk platter whose read head seeks across the tracks and lights up the sectors it reads, with the running byte count and the directory currently being scanned; the chart sweeps open when the scan finishes. Stop the scan from the toolbar.
 - **Collector** – drag slices or list rows into the collector tray at the bottom, review the total size, then move everything to the Trash at once. Nested selections are merged automatically so nothing is counted twice.
 - **File type breakdown** – switch the side panel to *File Types* to see video, audio, images, documents, archives/installers/disk images, apps, code and other, with a stacked overview bar. Click a type to list its largest files.
 - **Color by type** – in *File Types* mode the chart is colored by dominant file type; pick a type in the legend to highlight where it lives and fade out everything else.
@@ -75,6 +76,7 @@ Sources/DiskLens/
 ├── App.swift          App entry point
 ├── Model.swift        Scanner, data model, sunburst layout, view model
 ├── Views.swift        Main window, file list, collector, sunburst view
+├── ChartViews.swift   Display styles (ring / squares treemap / tree list), disk-read scan animation
 ├── Categories.swift   File type classification, type coloring, legend
 ├── MenuBar.swift      Menu bar icon, hide-on-close, launch at login
 ├── LowSpace.swift     Low disk space alert
@@ -110,8 +112,9 @@ make_app.sh            Builds DiskLens.app
 ## 功能
 
 - **环形图(Sunburst)**:最多 4 圈。点击扇形进入该目录,点击中心返回上一级,悬停显示名称和大小,顶部有面包屑导航。
+- **三种显示方式**:右侧视图可在「环形图」、「方块图」(矩形树图,嵌套的方块,点击进入、「上一级」返回)和可展开的「树形列表」(带大小条和百分比)之间切换,并记住你的选择。
 - **快速扫描**:第一层目录在所有 CPU 核心上并行扫描。小于 2 MB 的项目合并成一个节点,节省内存。
-- **扫描动画**:扫描时显示旋转的动态圆环、已统计的大小和当前正在扫描的目录;扫描完成后环形图会顺时针展开。
+- **扫描动画**:扫描时显示一张旋转的盘片,磁头在磁道间寻道并点亮读到的扇区,同时显示已统计的大小和当前正在扫描的目录;扫描完成后环形图会顺时针展开。停止扫描请用工具栏里的按钮。
 - **收集器**:把环形图扇形或列表行拖到底部的收集器里,查看总大小,然后一次性移到废纸篓。重叠的选择会自动合并,不会重复计算。
 - **按文件类型汇总**:把侧边栏切到「文件类型」,可以看到视频、音频、图片、文档、压缩包/安装包/磁盘映像、应用程序、代码和其他的占比,并带一条堆叠总览条。点某个类型,列出该类型里最大的文件。
 - **按类型着色**:在「文件类型」模式下,环形图按主要文件类型着色;在图例里选一个类型,就能高亮它分布在哪里,其余部分变淡。

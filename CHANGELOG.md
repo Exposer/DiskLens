@@ -9,16 +9,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions `0.1.0`
 ## [Unreleased]
 
 ### Added / 新增
+- **Three display styles** for the right-hand view: the existing *Ring* chart, a new *Squares* treemap (nested rectangles sized by space, click to drill in, *Up* button to go back, right-click for Collector / Reveal / Trash) and an expandable *Tree* list (chevrons to expand, size bars, percentages, double-click to open a folder). The choice is remembered. / 右侧视图新增**三种显示方式**:原来的「环形图」、新的「方块图」(按占用空间大小嵌套排布的方块,点击进入,「上一级」按钮返回,右键可加入收集器 / 在 Finder 中显示 / 移到废纸篓)和可展开的「树形列表」(箭头展开、带大小条和百分比、双击打开文件夹)。选择会被记住。
+- **Disk-read scan animation**: while scanning, a disk platter spins and a read head swings across the tracks, lighting up the sectors it reads, which then dim to a "read" color. / **读盘扫描动画**:扫描时显示一张旋转的盘片,磁头在磁道间来回寻道,读到的扇区会亮起,然后暗成「已读」的颜色。
 - **Memory is released while the window is hidden**: 3 minutes after the window is closed (or after a quiet login launch), DiskLens drops the scan tree and everything derived from it, leaving only the menu bar monitor in memory. Opening the window again reloads the saved scan and returns to the folder you were in. Nothing is released while a scan or duplicate search is running, when the Collector has items, when a scan was stopped early, or while the window is minimized to the Dock. / **窗口隐藏后释放内存**:关掉窗口(或开机安静启动)3 分钟后,DiskLens 会释放扫描树和所有由它派生的数据,内存里只剩菜单栏监控。再次打开窗口时会从已保存的扫描结果重新载入,并回到之前所在的文件夹。正在扫描 / 查找重复文件、收集器里有内容、扫描被中途停止、窗口最小化在 Dock 里时都不会释放。
-
-### Added / 新增
 - **Build number**: the app version is now shown as `1.0 (build N)` (e.g. in the About panel), where N is the number of commits, so every change gets a new build number automatically. / **Build 号**:应用版本现在显示为 `1.0 (build N)`(如「关于 DiskLens」里),N 为 git 提交数,每次改动提交后自动加 1。
 
-### Fixed / 修复
-- **Scan totals could far exceed the disk's real usage**: scanning no longer crosses file system boundaries (like `du -x`). Disk images mounted inside the folder tree (Xcode simulator runtimes, system asset images), external and network volumes and automount points are skipped, so the same data is no longer counted twice. Scanning `/` still includes your Data volume. / **扫描总大小可能远超磁盘实际用量**:扫描不再跨越文件系统边界(类似 `du -x`)。挂载进目录树的磁盘映像(Xcode 模拟器运行时、系统资源镜像)、外接盘、网络卷和自动挂载点都会被跳过,同一份数据不再被重复统计;从 `/` 扫描时仍会包含个人数据所在的 Data 卷。
-- Packaging with `make_app.sh` no longer fails at code signing with "detritus not allowed" when the project lives in a Finder/iCloud-synced folder. / 项目放在 Finder / iCloud 同步的文件夹里时,用 `make_app.sh` 打包不再在签名步骤报 "detritus not allowed"。
-
 ### Changed / 变更
+- `make_app.sh` now builds into `~/Library/Caches/disklens-build` (override with `DISKLENS_BUILD_DIR`) instead of the project's `.build`, because a project inside an iCloud-synced Documents folder made builds extremely slow. / `make_app.sh` 现在把编译产物放到 `~/Library/Caches/disklens-build`(可用 `DISKLENS_BUILD_DIR` 修改),不再放在项目的 `.build` 里,因为项目位于 iCloud 同步的 Documents 时编译会慢到卡住。
 - **Smoother ring chart on hover**: the outline of every ring segment is now computed once per layout and reused, so moving the mouse over the chart only recolors the hovered segment instead of rebuilding thousands of outlines on every move, which lowers CPU use. / **环形图悬停更流畅**:每个扇形的轮廓现在每次布局只计算一次并复用,鼠标在图上移动时只需要给悬停的扇形换颜色,不再每次移动都重新生成成千上万段轮廓,降低 CPU 占用。
 - **Much lower memory while scanning**: small files (under 2 MB, which end up in the "Small items" bucket anyway) no longer get a node of their own during the scan, so scanning a disk with millions of files peaks at a fraction of the memory it used to. Totals, charts and cached results are unchanged. / **扫描时内存占用大幅降低**:小于 2 MB 的小文件(最后本来就合并进「小文件」)在扫描时不再单独建节点,扫描有几百万个文件的磁盘时内存峰值只有原来的一小部分。总大小、图表和缓存结果都不变。
 - **Smaller scan results in memory**: folders and files no longer each keep a full copy of their path or an ID string. / **扫描结果在内存里更小**:每个文件夹和文件不再各自保存一份完整路径和 ID 字符串。
@@ -26,6 +23,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions `0.1.0`
 - Saved scans are read through memory mapping and the raw file data is released before the in-memory tree is built, so loading a cached scan needs less memory at once. / 读取已保存的扫描结果时改用内存映射,并在构建内存中的树之前释放原始数据,载入缓存时同一时刻占用的内存更少。
 - Duplicate search runs at background priority and no longer fills the system file cache with files it reads only once, so the Mac stays responsive and other apps keep their cache. / 查找重复文件改为后台优先级运行,并且不再用只读一遍的文件占满系统文件缓存,Mac 保持流畅,其他程序的缓存也不会被挤掉。
 - The scanning animation is capped at 30 fps, and background timers (progress, disk monitor) allow the system to coalesce wake-ups, which lowers CPU use and energy impact. / 扫描动画限制为 30 帧/秒,后台定时器(进度、磁盘监控)允许系统合并唤醒,降低 CPU 占用和耗电。
+
+### Fixed / 修复
+- **Scan totals could far exceed the disk's real usage**: scanning no longer crosses file system boundaries (like `du -x`). Disk images mounted inside the folder tree (Xcode simulator runtimes, system asset images), external and network volumes and automount points are skipped, so the same data is no longer counted twice. Scanning `/` still includes your Data volume. / **扫描总大小可能远超磁盘实际用量**:扫描不再跨越文件系统边界(类似 `du -x`)。挂载进目录树的磁盘映像(Xcode 模拟器运行时、系统资源镜像)、外接盘、网络卷和自动挂载点都会被跳过,同一份数据不再被重复统计;从 `/` 扫描时仍会包含个人数据所在的 Data 卷。
+- Packaging with `make_app.sh` no longer fails at code signing with "detritus not allowed" when the project lives in a Finder/iCloud-synced folder. / 项目放在 Finder / iCloud 同步的文件夹里时,用 `make_app.sh` 打包不再在签名步骤报 "detritus not allowed"。
+
+### Removed / 移除
+- The *Stop Scan* button in the middle of the scanning screen; use *Stop Scan* in the toolbar. / 扫描界面中间的「停止扫描」按钮;请使用工具栏里的「停止扫描」。
 
 ## [0.23.0] - 2026-11-06
 

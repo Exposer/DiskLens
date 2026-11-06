@@ -45,8 +45,7 @@ struct ContentView: View {
                     HSplitView {
                         FileListView(vm: vm, node: cur)
                             .frame(minWidth: 340, idealWidth: 440, maxWidth: 600)
-                        SunburstView(vm: vm, current: cur)
-                            .frame(minWidth: 420)
+                        ChartPane(vm: vm, current: cur)
                     }
                 } else if vm.scanning {
                     ScanningView(vm: vm)
@@ -355,31 +354,7 @@ struct ScanningView: View {
     var body: some View {
         VStack(spacing: 14) {
             ZStack {
-                TimelineView(.animation(minimumInterval: 1.0 / 30)) { tl in
-                    Canvas { ctx, size in
-                        let t = tl.date.timeIntervalSinceReferenceDate
-                        let g = RingGeometry(size: size)
-                        let lineWidth = max(2, g.w - 6)
-                        for lvl in 1...SunburstLayout.maxLevel {
-                            let r = g.r0 + (CGFloat(lvl) - 0.5) * g.w
-                            // 底轨
-                            ctx.stroke(arcPath(center: g.center, radius: r, from: 0, to: 2 * .pi),
-                                       with: .color(Color.secondary.opacity(0.12)),
-                                       lineWidth: lineWidth)
-                            // 旋转的彩色弧段,相邻圈方向相反、速度不同
-                            let dir: Double = lvl % 2 == 0 ? -1 : 1
-                            let speed = dir * (0.5 + 0.25 * Double(lvl))
-                            for k in 0..<3 {
-                                let start = t * speed + Double(k) * 2.1 + Double(lvl)
-                                let len = 0.55 + 0.4 * sin(t * 1.3 + Double(k + lvl))
-                                let hue = fmod(0.58 + 0.137 * Double(k + lvl), 1.0)
-                                ctx.stroke(arcPath(center: g.center, radius: r, from: start, to: start + len),
-                                           with: .color(tc(hue, 0.55, 0.92)),
-                                           style: StrokeStyle(lineWidth: lineWidth, lineCap: .round))
-                            }
-                        }
-                    }
-                }
+                DiskReadAnimation()
                 VStack(spacing: 2) {
                     Text(tr("已统计", "Scanned"))
                         .font(.caption)
@@ -397,15 +372,6 @@ struct ScanningView: View {
                 .truncationMode(.middle)
                 .frame(maxWidth: 520)
                 .padding(.horizontal)
-
-            Button {
-                vm.stopScan()
-            } label: {
-                Label(vm.scanStopped ? tr("正在停止…", "Stopping…") : tr("停止扫描", "Stop Scan"),
-                      systemImage: "stop.circle")
-            }
-            .controlSize(.large)
-            .disabled(vm.scanStopped)
         }
         .padding()
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -766,20 +732,8 @@ struct SunburstView: View {
         }
     }
 
-    /// 扇形颜色:文件夹模式按文件夹着色;文件类型模式按类别 / 所选扩展名着色
     private func segmentColor(_ s: Segment, hovered: Bool) -> Color {
-        guard vm.viewMode == .types else { return SunburstLayout.color(s, hovered: hovered) }
-        switch vm.typeGrouping {
-        case .category:
-            return SunburstLayout.typeColor(s, hovered: hovered, selected: vm.selectedCategory)
-        case .byExtension:
-            if vm.selectedExt != nil {
-                return SunburstLayout.extColor(s, hovered: hovered,
-                                               bytes: vm.extHighlight[s.node.id] ?? 0,
-                                               color: vm.extHighlightColor)
-            }
-            return SunburstLayout.typeColor(s, hovered: hovered, selected: nil)
-        }
+        vm.segmentColor(s, hovered: hovered)
     }
 
     private func node(at p: CGPoint, _ g: RingGeometry) -> Node? {
