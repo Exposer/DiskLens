@@ -3,12 +3,12 @@
 All notable changes to DiskLens are recorded here. Each entry is written in English and Chinese.
 DiskLens 的所有重要改动都记录在这里,每条中英文对照。
 
-Format follows [Keep a Changelog](https://keepachangelog.com/). Versions `0.1.0`–`0.10.0` correspond to the source packages v1–v10 delivered during development.
-格式参考 [Keep a Changelog](https://keepachangelog.com/)。`0.1.0`–`0.10.0` 对应开发过程中交付的 v1–v10 源码包。
+Format follows [Keep a Changelog](https://keepachangelog.com/). `0.1.0`–`0.23.0` are the development builds that were delivered as source packages; **1.0 is the first public release**.
+格式参考 [Keep a Changelog](https://keepachangelog.com/)。`0.1.0`–`0.23.0` 是开发过程中以源码包交付的版本;**1.0 是第一个公开发布的版本**。
 
 ## [Unreleased]
 
-## [0.24.0] - 2026-11-06
+## [1.0] - 2026-11-06
 
 ### Added / 新增
 - **Three display styles** for the right-hand view: the existing *Ring* chart, a new *Squares* treemap (nested rectangles sized by space, click to drill in, *Up* button to go back, right-click for Collector / Reveal / Trash) and an expandable *Tree* list (chevrons to expand, size bars, percentages, double-click to open a folder). The choice is remembered. / 右侧视图新增**三种显示方式**:原来的「环形图」、新的「方块图」(按占用空间大小嵌套排布的方块,点击进入,「上一级」按钮返回,右键可加入收集器 / 在 Finder 中显示 / 移到废纸篓)和可展开的「树形列表」(箭头展开、带大小条和百分比、双击打开文件夹)。选择会被记住。

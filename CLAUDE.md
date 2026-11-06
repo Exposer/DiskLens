@@ -9,7 +9,7 @@ A native macOS (SwiftUI, Swift 5.9, macOS 13+) disk-usage analyzer. Package layo
 
 - Add the entry under `## [Unreleased]`, in the right group: `Added / 新增`, `Changed / 变更`, `Fixed / 修复`, `Removed / 移除`.
 - Write each entry in **English and Chinese** on the same bullet, separated by ` / `, like the existing entries. Describe what the user sees, not the implementation.
-- When a batch of work is delivered to the user (a new zip / release), rename `[Unreleased]` to the next version `## [0.x.0] - YYYY-MM-DD` and start a fresh empty `[Unreleased]` section.
+- When a batch of work is delivered to the user (a new zip / release), rename `[Unreleased]` to the next version `## [1.x] - YYYY-MM-DD` (1.0 was the first public release; earlier development builds were `0.x.0` / 1.0 是第一个公开版本,之前的开发版本是 `0.x.0`) and start a fresh empty `[Unreleased]` section.
 - Docs-only or tooling-only changes also get an entry. Don't skip it because a change is small.
 - Keep `README.md` feature lists (English and 中文) in sync when a feature is added or removed.
 
