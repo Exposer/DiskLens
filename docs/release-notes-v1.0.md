@@ -32,7 +32,21 @@ The first public release of **DiskLens**, a native macOS disk-usage analyzer bui
 
 ## Install
 
-There is no prebuilt app attached to this release; build it from source (macOS 13 or later, Xcode or the Command Line Tools):
+### Download (Apple Silicon)
+
+Download **`DiskLens-1.0-macos-arm64.zip`** from the assets below (a Mac with an Apple Silicon chip, macOS 13 or later), unzip it and drag `DiskLens.app` into `/Applications`.
+
+The app is signed with the author's own certificate and is **not notarized**, so macOS blocks it the first time: right-click the app and choose *Open*, or run:
+
+```bash
+xattr -dr com.apple.quarantine /Applications/DiskLens.app
+```
+
+Intel Macs need to build from source. SHA-256 of the zip: `SHA256_PLACEHOLDER`
+
+### Build from source
+
+macOS 13 or later, Xcode or the Command Line Tools:
 
 ```bash
 git clone https://github.com/Exposer/DiskLens.git
@@ -93,7 +107,21 @@ See the [README](https://github.com/Exposer/DiskLens#readme) for details and the
 
 ## 安装
 
-这个版本没有附带预编译的应用,请从源码编译(需要 macOS 13 或更高版本,以及 Xcode 或命令行工具):
+### 下载(Apple 芯片)
+
+从下面的 Assets 里下载 **`DiskLens-1.0-macos-arm64.zip`**(需要 Apple 芯片的 Mac,macOS 13 或更高版本),解压后把 `DiskLens.app` 拖进「应用程序」。
+
+应用用作者自己的证书签名,**没有经过公证**,所以第一次打开会被 macOS 拦截:右键点击应用选择「打开」,或者运行:
+
+```bash
+xattr -dr com.apple.quarantine /Applications/DiskLens.app
+```
+
+Intel Mac 需要从源码编译。压缩包的 SHA-256:`SHA256_PLACEHOLDER`
+
+### 从源码编译
+
+需要 macOS 13 或更高版本,以及 Xcode 或命令行工具:
 
 ```bash
 git clone https://github.com/Exposer/DiskLens.git

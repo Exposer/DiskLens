@@ -8,6 +8,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). `0.1.0`–`0.23.
 
 ## [Unreleased]
 
+### Changed / 变更
+- The 1.0 release notes now describe the prebuilt `DiskLens-1.0-macos-arm64.zip` download (Apple Silicon, signed with the author's certificate, not notarized) next to the build-from-source steps. / 1.0 的发布说明现在介绍预编译的 `DiskLens-1.0-macos-arm64.zip` 下载(Apple 芯片,用作者的证书签名,未公证),并保留从源码编译的步骤。
+
 ### Added / 新增
 - `docs/release-notes-v1.0.md`: the bilingual release notes for 1.0, so the GitHub release can be created with `gh release create v1.0 --notes-file docs/release-notes-v1.0.md`. / 新增 `docs/release-notes-v1.0.md`:1.0 的中英文发布说明,可以用 `gh release create v1.0 --notes-file docs/release-notes-v1.0.md` 创建 GitHub Release。
 
