@@ -8,6 +8,16 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions `0.1.0`
 
 ## [Unreleased]
 
+## [0.18.0] - 2026-11-06
+
+### Added / 新增
+- **Compare scans** (new *Compare* button in the toolbar): compares the scan you are looking at with an earlier one to show what grew or shrank. The window shows the total change, the time span, and how many large files are new or removed; a *Folder hierarchy* tab lets you drill from the biggest changes down to the exact folder (red = grew, green = shrank, with an *Other (small items)* row for the rest), and an *Individual files* tab lists files that grew, are new, shrank or were removed, with Collector and Reveal in Finder buttons. / **对比扫描**(工具栏新增「对比」按钮):把当前查看的扫描和之前的某次扫描对比,看磁盘是被什么撑大或腾出来的。窗口显示总大小变化、时间跨度、新增和删除的大文件个数;「文件夹层级」页可以从变化最大的地方逐层点进去找到具体文件夹(红色 = 变大,绿色 = 变小,其余汇总在「其他(小文件等)」);「单个文件」页列出增长、新增、减少、已删除的文件,可加入收集器或在 Finder 中显示。
+- **Scan history**: every complete scan now also saves a snapshot, keeping the latest 8 per folder. The previous "latest result" is folded into the history the first time, so you can compare right after your next scan. / **扫描历史**:每次完整扫描都会另存一份快照,每个文件夹保留最近 8 份。第一次保存历史时,会把之前的「最新结果」也并进去,所以下次扫描完就能马上对比。
+
+### Changed / 变更
+- Moving items to the Trash only updates the latest saved result, not the history, so history snapshots stay exactly as they were scanned. / 移到废纸篓后只更新「最新结果」,不改历史快照,历史快照始终保持扫描时的样子。
+- *Clear Cache* now also removes the history snapshots, and its size includes them. / 「清除缓存」现在也会清掉历史快照,显示的大小也包含它们。
+
 ## [0.17.0] - 2026-11-06
 
 ### Added / 新增

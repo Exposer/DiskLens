@@ -27,11 +27,58 @@ enum ScanStore {
             .appendingPathComponent("DiskLens", isDirectory: true)
     }
 
-    /// 每个被扫描的目录一个缓存文件,文件名由路径的哈希决定
-    static func fileURL(for path: String) -> URL {
+    /// 路径的 FNV-1a 哈希,用来给缓存文件命名
+    private static func hashString(_ path: String) -> String {
         var h: UInt64 = 14695981039346656037
         for b in path.utf8 { h ^= UInt64(b); h = h &* 1099511628211 }
-        return directory.appendingPathComponent("scan-\(String(h, radix: 16)).json")
+        return String(h, radix: 16)
+    }
+
+    /// 每个被扫描的目录一个“最新结果”缓存文件,文件名由路径的哈希决定
+    static func fileURL(for path: String) -> URL {
+        directory.appendingPathComponent("scan-\(hashString(path)).json")
+    }
+
+    // MARK: 历史快照(用于“对比扫描”)
+
+    /// 每次完整扫描都会另存一份历史快照,每个目录保留最近 maxHistory 份
+    static let maxHistory = 8
+
+    static var historyDirectory: URL {
+        directory.appendingPathComponent("history", isDirectory: true)
+    }
+
+    struct HistoryEntry: Identifiable {
+        let url: URL
+        let date: Date
+        var id: URL { url }
+    }
+
+    private static func historyFile(_ path: String, date: Date) -> URL {
+        historyDirectory.appendingPathComponent(
+            "hist-\(hashString(path))-\(Int(date.timeIntervalSince1970)).json")
+    }
+
+    /// 某个目录的历史快照,最新的在前
+    static func history(for path: String) -> [HistoryEntry] {
+        let prefix = "hist-\(hashString(path))-"
+        let files = (try? FileManager.default.contentsOfDirectory(
+            at: historyDirectory, includingPropertiesForKeys: nil)) ?? []
+        return files.compactMap { u -> HistoryEntry? in
+            let name = u.deletingPathExtension().lastPathComponent
+            guard name.hasPrefix(prefix), let t = TimeInterval(name.dropFirst(prefix.count)) else { return nil }
+            return HistoryEntry(url: u, date: Date(timeIntervalSince1970: t))
+        }
+        .sorted { $0.date > $1.date }
+    }
+
+    /// 读取某个历史快照
+    static func loadSnapshot(at url: URL) -> (root: Node, date: Date)? {
+        guard let data = try? Data(contentsOf: url),
+              let snap = try? JSONDecoder().decode(ScanSnapshot.self, from: data),
+              snap.version == 2 || snap.version == 3,
+              snap.root.c?.count == Category.count else { return nil }
+        return (node(from: snap.root, url: URL(fileURLWithPath: snap.path), parent: nil), snap.date)
     }
 
     // MARK: 节点 <-> DTO
@@ -63,10 +110,34 @@ enum ScanStore {
 
     // MARK: 读写
 
-    static func write(_ snap: ScanSnapshot) throws {
+    /// 只更新“最新结果”(清理文件之后用;不产生新的历史快照)
+    static func writeLatest(_ snap: ScanSnapshot) throws {
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         let data = try JSONEncoder().encode(snap)
         try data.write(to: fileURL(for: snap.path), options: .atomic)
+    }
+
+    /// 一次完整扫描结束后:更新“最新结果”,并另存一份历史快照
+    static func write(_ snap: ScanSnapshot) throws {
+        let fm = FileManager.default
+        try fm.createDirectory(at: historyDirectory, withIntermediateDirectories: true)
+
+        // 第一次保存历史前,把已有的“最新结果”也并入历史,这样马上就能和它对比
+        let latest = fileURL(for: snap.path)
+        if history(for: snap.path).isEmpty,
+           let oldData = try? Data(contentsOf: latest),
+           let old = try? JSONDecoder().decode(ScanSnapshot.self, from: oldData),
+           old.path == snap.path, old.version >= 2 {
+            try? oldData.write(to: historyFile(snap.path, date: old.date), options: .atomic)
+        }
+
+        let data = try JSONEncoder().encode(snap)
+        try data.write(to: latest, options: .atomic)
+        try data.write(to: historyFile(snap.path, date: snap.date), options: .atomic)
+
+        for e in history(for: snap.path).dropFirst(maxHistory) {
+            try? fm.removeItem(at: e.url)
+        }
     }
 
     static func load(path: String) -> (root: Node, date: Date)? {
@@ -82,8 +153,9 @@ enum ScanStore {
 
     /// 已保存的扫描结果占用的磁盘空间
     static func totalSize() -> Int64 {
-        let files = (try? FileManager.default.contentsOfDirectory(
-            at: directory, includingPropertiesForKeys: [.fileSizeKey])) ?? []
+        let fm = FileManager.default
+        var files = (try? fm.contentsOfDirectory(at: directory, includingPropertiesForKeys: [.fileSizeKey])) ?? []
+        files += (try? fm.contentsOfDirectory(at: historyDirectory, includingPropertiesForKeys: [.fileSizeKey])) ?? []
         return files.reduce(0) { sum, u in
             sum + Int64((try? u.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0)
         }

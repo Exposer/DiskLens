@@ -78,6 +78,7 @@ struct ContentView: View {
             }
         }
         .onAppear { vm.loadCachedOrScan() }
+        .sheet(isPresented: $vm.showDiff) { DiffSheet(vm: vm) }
         .alert(tr("移到废纸篓?", "Move to Trash?"), isPresented: Binding(
             get: { vm.pendingTrash != nil },
             set: { if !$0 { vm.pendingTrash = nil } })
@@ -150,6 +151,7 @@ struct ContentView: View {
             }
 
             Divider().frame(height: 16)
+            CompareButton(vm: vm)
             ExportMenu(vm: vm)
             SettingsMenus(onChange: onPrefsChange)
         }
@@ -252,8 +254,8 @@ struct CacheButton: View {
                 size = ScanStore.totalSize()
             }
         } message: {
-            Text(tr("只会删除 DiskLens 自己保存的缓存文件,不会动你的任何文件。下次启动会重新扫描。",
-                    "Only DiskLens's own cache files are deleted; none of your files are touched. The next launch will rescan."))
+            Text(tr("只会删除 DiskLens 自己保存的缓存文件(包括用于「对比」的历史快照),不会动你的任何文件。下次启动会重新扫描。",
+                    "Only DiskLens's own cache files are deleted (including the history snapshots used by Compare); none of your files are touched. The next launch will rescan."))
         }
     }
 }

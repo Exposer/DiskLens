@@ -299,6 +299,7 @@ final class ViewModel: ObservableObject {
     @Published var hogs: [HogItem] = []         // “占用大户”列表
     @Published var hogsLoading = false
     @Published var scanStopped = false          // 扫描被手动停止,当前结果不完整
+    @Published var showDiff = false             // 显示“对比扫描”窗口
     @Published var bigFiles: [BigFile] = []     // 大文件排行榜
     @Published var bigFilter: Category? { didSet { refreshBigFiles() } }
     @Published var bigLimit = 100 { didSet { refreshBigFiles() } }
@@ -430,7 +431,7 @@ final class ViewModel: ObservableObject {
     private func saveCache() {
         guard let r = root, !scanning, !scanStopped else { return }
         let snap = ScanSnapshot(path: r.url.path, date: scanDate ?? Date(), root: ScanStore.dto(r))
-        Task.detached(priority: .utility) { try? ScanStore.write(snap) }
+        Task.detached(priority: .utility) { try? ScanStore.writeLatest(snap) }
     }
 
     func open(_ n: Node) {
