@@ -8,6 +8,17 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions `0.1.0`
 
 ## [Unreleased]
 
+## [0.21.0] - 2026-11-06
+
+### Added / 新增
+- **Menu bar icon**: a drive icon with your available space (e.g. `38 GB`) lives in the menu bar and turns into a warning triangle when space is low. Click it for a capacity panel (available / used / purgeable / free), *Open DiskLens Window*, the Space Alert settings, *Show available space in the menu bar*, *Launch at login*, and *Quit DiskLens*. / **菜单栏图标**:菜单栏里常驻一个磁盘图标,旁边显示可用空间(如 `38 GB`),空间不足时变成警告三角。点开是容量面板(可用 / 已用 / 可清除 / 空闲),并有「打开 DiskLens 窗口」、空间提醒设置、「菜单栏里显示可用空间」、「开机时自动启动」和「退出 DiskLens」。
+- **Closing the window no longer quits DiskLens**: the window is just hidden, so disk monitoring, the menu bar icon and background notifications keep working, and your scan results and Collector are still there when you reopen it from the menu bar icon or the Dock. Quit with ⌘Q or *Quit DiskLens* in the menu bar panel. / **关闭窗口不再退出 DiskLens**:窗口只是被隐藏,磁盘监控、菜单栏图标和后台通知继续工作;从菜单栏图标或 Dock 图标重新打开窗口时,扫描结果和收集器内容都还在。用 ⌘Q 或菜单栏面板里的「退出 DiskLens」才会真正退出。
+- **Launch at login** (packaged `DiskLens.app` only). / **开机时自动启动**(仅打包后的 `DiskLens.app` 可用)。
+- The Space Alert menu has a *Show icon in the menu bar* switch. / 「空间提醒」菜单里新增「在菜单栏显示图标」开关。
+
+### Changed / 变更
+- Disk monitoring is now owned by the app rather than the window, so it keeps running when the window is closed. / 磁盘监控现在归整个 App 所有,不再依附于窗口,所以关掉窗口后依然继续。
+
 ## [0.20.0] - 2026-11-06
 
 ### Added / 新增

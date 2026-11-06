@@ -3,6 +3,11 @@ import AppKit
 
 @main
 struct DiskLensApp: App {
+    @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
+    /// 磁盘监控归整个 App 所有:窗口关掉(隐藏)之后依然继续
+    @StateObject private var monitor = DiskMonitor()
+    @AppStorage("showMenuBar") private var showMenuBar = true
+
     init() {
         // 作为 Swift Package 直接运行时,也要让它显示成普通窗口应用
         NSApplication.shared.setActivationPolicy(.regular)
@@ -10,9 +15,17 @@ struct DiskLensApp: App {
     }
 
     var body: some Scene {
-        WindowGroup("DiskLens") {
-            RootView()
+        // 单窗口。关闭窗口只是隐藏(见 AppDelegate),扫描结果会保留
+        Window("DiskLens", id: "main") {
+            RootView(monitor: monitor)
         }
+
+        MenuBarExtra(isInserted: $showMenuBar) {
+            MenuBarContent(monitor: monitor)
+        } label: {
+            MenuBarLabel(monitor: monitor)
+        }
+        .menuBarExtraStyle(.window)
     }
 }
 
@@ -20,12 +33,14 @@ struct DiskLensApp: App {
 /// 扫描结果和收集器里的内容都不受影响。
 struct RootView: View {
     @StateObject private var vm = ViewModel()
+    @ObservedObject var monitor: DiskMonitor
     @State private var version = 0
 
     var body: some View {
-        ContentView(vm: vm, onPrefsChange: { version += 1 })
+        ContentView(vm: vm, monitor: monitor, onPrefsChange: { version += 1 })
             .id(version)
-            .onAppear { vm.startDiskMonitor() }
+            .onAppear { monitor.start() }
+            .background(WindowAccessor { AppDelegate.shared?.adopt($0) })
             .tint(Prefs.theme.accent)
             .preferredColorScheme(Prefs.theme.scheme)
     }

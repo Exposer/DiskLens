@@ -3,7 +3,8 @@ import AppKit
 import UserNotifications
 
 // 磁盘快满时提醒:每分钟检查一次启动磁盘的“可用空间”(空闲 + 可清除,和访达、系统设置里的「可用」一致),
-// 低于设定的阈值时,在窗口顶部显示提示条;如果 DiskLens 在后台,再发一条系统通知(最多每 6 小时一次)。
+// 低于设定的阈值时,在窗口顶部和菜单栏里提示;如果 DiskLens 在后台,再发一条系统通知(最多每 6 小时一次)。
+// 监控由整个应用持有(DiskMonitor),所以关掉窗口后依然继续。
 
 enum LowSpaceRule: String, CaseIterable, Identifiable {
     case off, gb10, gb20, gb50, gb100, pct10, pct15, pct20
@@ -75,50 +76,59 @@ enum Notifier {
     }
 }
 
-extension ViewModel {
-    func startDiskMonitor() {
-        guard diskTimer == nil else { return }
+/// 磁盘容量监控:整个应用只有一个,由 App 持有,和窗口是否打开无关。
+@MainActor
+final class DiskMonitor: ObservableObject {
+    @Published var usage: VolumeUsage? = VolumeUsage.read()
+    @Published var lowSpace: VolumeUsage?       // 空间不足时的当前容量(nil = 没有不足)
+    @Published var dismissed = false            // 窗口里的提示条被点了“忽略”
+    private var timer: Timer?
+
+    func start() {
+        guard timer == nil else { return }
         if Prefs.lowRule != .off && Prefs.lowNotify { Notifier.requestAuthIfNeeded() }
-        checkDiskSpace()
-        diskTimer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in
-            Task { @MainActor in self?.checkDiskSpace() }
+        check()
+        timer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in
+            Task { @MainActor in self?.check() }
         }
     }
 
     /// 检查一次;设置改变后也会马上调用
-    func checkDiskSpace() {
-        guard Prefs.lowRule != .off, let u = VolumeUsage.read(), Prefs.lowRule.isLow(u) else {
+    func check() {
+        usage = VolumeUsage.read()
+        guard Prefs.lowRule != .off, let u = usage, Prefs.lowRule.isLow(u) else {
             lowSpace = nil
-            lowSpaceDismissed = false      // 空间恢复后,下次再不足会重新提醒
+            dismissed = false      // 空间恢复后,下次再不足会重新提醒
             return
         }
         let wasLow = lowSpace != nil
         lowSpace = u
         if !wasLow {
-            lowSpaceDismissed = false
-            notifyLowSpace(u)
+            dismissed = false
+            notify(u)
         }
     }
 
-    private func notifyLowSpace(_ u: VolumeUsage) {
-        // 窗口在前台时已经有提示条了,只在 DiskLens 位于后台时发系统通知;最多每 6 小时一次
+    private func notify(_ u: VolumeUsage) {
+        // 窗口在前台时已经有提示条了,只在 DiskLens 位于后台(包括窗口被关掉)时发系统通知;最多每 6 小时一次
         guard Prefs.lowNotify, Notifier.available, !NSApplication.shared.isActive else { return }
         let key = "lastLowNotify"
         let now = Date().timeIntervalSince1970
         guard now - UserDefaults.standard.double(forKey: key) > 6 * 3600 else { return }
         UserDefaults.standard.set(now, forKey: key)
-        let pct = Double(u.available) / Double(max(u.total, 1)) * 100
+        let pct = String(format: "%.0f", Double(u.available) / Double(max(u.total, 1)) * 100)
         Notifier.post(
             title: tr("磁盘空间不足", "Low disk space"),
-            body: tr("只剩 \(formatSize(u.available)) 可用(\(String(format: "%.0f", pct))%)。打开 DiskLens 找出占用最多的内容。",
-                     "Only \(formatSize(u.available)) available (\(String(format: "%.0f", pct))%). Open DiskLens to find what is using the most space."))
+            body: tr("只剩 \(formatSize(u.available)) 可用(\(pct)%)。打开 DiskLens 找出占用最多的内容。",
+                     "Only \(formatSize(u.available)) available (\(pct)%). Open DiskLens to find what is using the most space."))
     }
 }
 
-// MARK: - 状态栏里的提醒设置菜单
+// MARK: - 提醒设置菜单(窗口状态栏和菜单栏图标里共用)
 
 struct LowSpaceMenu: View {
-    @ObservedObject var vm: ViewModel
+    @ObservedObject var monitor: DiskMonitor
+    @AppStorage("showMenuBar") private var showMenuBar = true
 
     var body: some View {
         Menu {
@@ -127,8 +137,8 @@ struct LowSpaceMenu: View {
                     Button {
                         Prefs.lowRule = r
                         if r != .off && Prefs.lowNotify { Notifier.requestAuthIfNeeded() }
-                        vm.checkDiskSpace()
-                        vm.objectWillChange.send()
+                        monitor.check()
+                        monitor.objectWillChange.send()
                     } label: {
                         if Prefs.lowRule == r {
                             Label(r.title, systemImage: "checkmark")
@@ -144,7 +154,7 @@ struct LowSpaceMenu: View {
                 set: { on in
                     Prefs.lowNotify = on
                     if on { Notifier.requestAuthIfNeeded() }
-                    vm.objectWillChange.send()
+                    monitor.objectWillChange.send()
                 })
             ) {
                 Text(Notifier.available
@@ -152,6 +162,7 @@ struct LowSpaceMenu: View {
                      : tr("系统通知(仅打包后的 App 可用)", "System notification (packaged app only)"))
             }
             .disabled(!Notifier.available)
+            Toggle(tr("在菜单栏显示图标", "Show icon in the menu bar"), isOn: $showMenuBar)
         } label: {
             Label(tr("空间提醒", "Space Alert"),
                   systemImage: Prefs.lowRule == .off ? "bell.slash" : "bell")

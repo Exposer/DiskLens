@@ -10,6 +10,8 @@ private struct CollectorFramePref: PreferenceKey {
 
 struct ContentView: View {
     @ObservedObject var vm: ViewModel
+    /// 磁盘容量监控(归整个 App 所有)
+    @ObservedObject var monitor: DiskMonitor
     /// 切换语言 / 配色后通知上层重建界面
     let onPrefsChange: () -> Void
 
@@ -22,7 +24,7 @@ struct ContentView: View {
             toolbar
                 .background(Prefs.theme.bar)
             Divider()
-            if let u = vm.lowSpace, !vm.lowSpaceDismissed {
+            if let u = monitor.lowSpace, !monitor.dismissed {
                 lowSpaceBanner(u)
                 Divider()
             }
@@ -200,7 +202,7 @@ struct ContentView: View {
             if vm.current != nil {
                 Button(tr("找出占用大户", "Find space hogs")) { vm.viewMode = .hogs }
             }
-            Button(tr("忽略", "Dismiss")) { vm.lowSpaceDismissed = true }
+            Button(tr("忽略", "Dismiss")) { monitor.dismissed = true }
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 6)
@@ -266,7 +268,7 @@ struct ContentView: View {
     private var statusBar: some View {
         HStack(spacing: 12) {
             CapacityBar()
-            LowSpaceMenu(vm: vm)
+            LowSpaceMenu(monitor: monitor)
             Spacer()
             CacheButton(vm: vm)
             Button(tr("部分目录打不开?授予「完全磁盘访问权限」",
