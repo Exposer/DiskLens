@@ -8,6 +8,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions `0.1.0`
 
 ## [Unreleased]
 
+## [0.23.0] - 2026-11-06
+
+### Added / 新增
+- **Menu bar only mode**: a *Menu bar only (hide the Dock icon)* option (menu bar panel and the Space Alert menu). While the window is closed DiskLens disappears from the Dock and lives only in the menu bar; opening the window brings the Dock icon back so the window behaves normally (focus, ⌘ shortcuts, ⌘Tab), and it hides again when you close the window. A minimized window keeps the Dock icon so you can restore it. / **纯菜单栏模式**:新增「仅在菜单栏显示(隐藏 Dock 图标)」选项(菜单栏面板和「空间提醒」菜单里都有)。窗口关闭时 DiskLens 从 Dock 里消失,只留在菜单栏;打开窗口时 Dock 图标会暂时回来,让窗口能正常使用焦点、⌘ 快捷键和 ⌘Tab,关掉窗口后再次隐藏。最小化的窗口会保留 Dock 图标,方便还原。
+
+### Changed / 变更
+- Menu bar only mode is ignored while the menu bar icon is turned off (the option is greyed out), otherwise there would be no way to open the app. / 菜单栏图标被关掉时,纯菜单栏模式不会生效(选项会置灰),否则就没有入口可以打开应用。
+
 ## [0.22.0] - 2026-11-06
 
 ### Added / 新增

@@ -25,6 +25,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     override init() {
         super.init()
         AppDelegate.shared = self
+        // 设置里切换“仅在菜单栏显示”或“菜单栏图标”时,马上更新 Dock 图标
+        NotificationCenter.default.addObserver(forName: UserDefaults.didChangeNotification,
+                                               object: nil, queue: .main) { [weak self] _ in
+            self?.applyPolicy()
+        }
+    }
+
+    /// 纯菜单栏模式:没有窗口显示时隐藏 Dock 图标(.accessory),打开窗口时恢复(.regular),
+    /// 这样窗口能正常获得焦点、使用 ⌘ 快捷键和 ⌘Tab。菜单栏图标被关掉时不进入此模式,否则就没有入口了。
+    func applyPolicy() {
+        let d = UserDefaults.standard
+        let menuBarOn = d.object(forKey: "showMenuBar") as? Bool ?? true
+        let menuBarOnly = menuBarOn && d.bool(forKey: "menuBarOnly")
+        // 最小化到 Dock 的窗口也算“有窗口”,否则 Dock 图标消失后就没法还原它了
+        let windowUp = (mainWindow?.isVisible == true && !isQuiet) || mainWindow?.isMiniaturized == true
+        let want: NSApplication.ActivationPolicy = (menuBarOnly && !windowUp) ? .accessory : .regular
+        if NSApp.activationPolicy() != want {
+            NSApp.setActivationPolicy(want)
+        }
     }
 
     /// 是否由“登录时自动打开”启动的(必须在 applicationDidFinishLaunching 里读取)
@@ -85,6 +104,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     func windowShouldClose(_ sender: NSWindow) -> Bool {
         sender.orderOut(nil)
+        // 窗口收起之后,纯菜单栏模式下把 Dock 图标藏起来
+        DispatchQueue.main.async { [weak self] in self?.applyPolicy() }
         return false
     }
 
@@ -165,6 +186,7 @@ struct MenuBarContent: View {
     @AppStorage("menuBarShowText") private var showText = true
     @AppStorage("showMenuBar") private var showMenuBar = true
     @AppStorage("loginShowWindow") private var loginShowWindow = false
+    @AppStorage("menuBarOnly") private var menuBarOnly = false
     @State private var launchAtLogin = LaunchAtLogin.isEnabled
 
     var body: some View {
@@ -201,6 +223,12 @@ struct MenuBarContent: View {
             Toggle(tr("菜单栏里显示可用空间", "Show available space in the menu bar"), isOn: $showText)
                 .toggleStyle(.checkbox)
                 .font(.callout)
+
+            Toggle(tr("仅在菜单栏显示(隐藏 Dock 图标)", "Menu bar only (hide the Dock icon)"), isOn: $menuBarOnly)
+                .toggleStyle(.checkbox)
+                .font(.callout)
+                .help(tr("窗口关闭时 Dock 里不显示 DiskLens;打开窗口时 Dock 图标会暂时出现,窗口才能正常使用 ⌘ 快捷键",
+                         "DiskLens disappears from the Dock while its window is closed. The Dock icon comes back while the window is open so it works normally with ⌘ shortcuts."))
 
             Toggle(tr("开机时自动启动", "Launch at login"), isOn: Binding(
                 get: { launchAtLogin },

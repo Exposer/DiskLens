@@ -129,6 +129,7 @@ final class DiskMonitor: ObservableObject {
 struct LowSpaceMenu: View {
     @ObservedObject var monitor: DiskMonitor
     @AppStorage("showMenuBar") private var showMenuBar = true
+    @AppStorage("menuBarOnly") private var menuBarOnly = false
 
     var body: some View {
         Menu {
@@ -163,6 +164,8 @@ struct LowSpaceMenu: View {
             }
             .disabled(!Notifier.available)
             Toggle(tr("在菜单栏显示图标", "Show icon in the menu bar"), isOn: $showMenuBar)
+            Toggle(tr("仅在菜单栏显示(隐藏 Dock 图标)", "Menu bar only (hide the Dock icon)"), isOn: $menuBarOnly)
+                .disabled(!showMenuBar)
         } label: {
             Label(tr("空间提醒", "Space Alert"),
                   systemImage: Prefs.lowRule == .off ? "bell.slash" : "bell")
