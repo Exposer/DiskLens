@@ -148,6 +148,7 @@ struct ContentView: View {
         HStack(spacing: 12) {
             CapacityBar()
             Spacer()
+            CacheButton(vm: vm)
             Button("部分目录打不开?授予「完全磁盘访问权限」") {
                 if let u = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles") {
                     NSWorkspace.shared.open(u)
@@ -166,6 +167,43 @@ struct ContentView: View {
         p.canChooseFiles = false
         p.allowsMultipleSelection = false
         if p.runModal() == .OK, let u = p.url { vm.scan(u) }
+    }
+}
+
+// MARK: - 清除缓存按钮
+
+struct CacheButton: View {
+    @ObservedObject var vm: ViewModel
+    @State private var size: Int64 = ScanStore.totalSize()
+    @State private var confirm = false
+
+    var body: some View {
+        Button {
+            confirm = true
+        } label: {
+            Label(size > 0 ? "清除缓存 (\(formatSize(size)))" : "无缓存", systemImage: "trash.slash")
+        }
+        .buttonStyle(.link)
+        .font(.caption)
+        .disabled(size == 0)
+        .help("删除已保存的扫描结果。当前窗口里的结果不受影响,下次启动会重新扫描。")
+        .onChange(of: vm.scanDate) { _ in
+            // 扫描结果在界面更新之后才写盘,稍等一会儿再刷新大小
+            Task {
+                try? await Task.sleep(nanoseconds: 1_500_000_000)
+                size = ScanStore.totalSize()
+            }
+        }
+        .onAppear { size = ScanStore.totalSize() }
+        .alert("清除已保存的扫描结果?", isPresented: $confirm) {
+            Button("取消", role: .cancel) {}
+            Button("清除", role: .destructive) {
+                ScanStore.clearAll()
+                size = ScanStore.totalSize()
+            }
+        } message: {
+            Text("只会删除 DiskLens 自己保存的缓存文件,不会动你的任何文件。下次启动会重新扫描。")
+        }
     }
 }
 

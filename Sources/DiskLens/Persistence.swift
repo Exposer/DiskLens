@@ -74,6 +74,15 @@ enum ScanStore {
         return (root, snap.date)
     }
 
+    /// 已保存的扫描结果占用的磁盘空间
+    static func totalSize() -> Int64 {
+        let files = (try? FileManager.default.contentsOfDirectory(
+            at: directory, includingPropertiesForKeys: [.fileSizeKey])) ?? []
+        return files.reduce(0) { sum, u in
+            sum + Int64((try? u.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0)
+        }
+    }
+
     static func clearAll() {
         try? FileManager.default.removeItem(at: directory)
     }
