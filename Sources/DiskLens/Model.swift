@@ -18,6 +18,8 @@ final class Node: Identifiable, @unchecked Sendable {
     weak var parent: Node?
     /// 目录节点:整棵子树按文件类型汇总的字节数(下标 = Category.rawValue)。文件节点为空。
     var cats: [Int64] = []
+    /// 文件的最后修改时间(只记录文件,目录为 nil)
+    var mod: Date?
 
     init(url: URL, name: String? = nil, isDir: Bool, size: Int64 = 0) {
         self.url = url
@@ -30,7 +32,7 @@ final class Node: Identifiable, @unchecked Sendable {
 // MARK: - 扫描器
 
 final class DiskScanner: @unchecked Sendable {
-    private struct Entry { let url: URL; let isDir: Bool; let size: Int64 }
+    private struct Entry { let url: URL; let isDir: Bool; let size: Int64; let mod: Date? }
 
     private let lock = NSLock()
     private var bytes: Int64 = 0
@@ -42,7 +44,8 @@ final class DiskScanner: @unchecked Sendable {
         "/Volumes", "/System/Volumes", "/dev", "/cores", "/private/var/vm"
     ]
     private static let keys: [URLResourceKey] = [
-        .isDirectoryKey, .isSymbolicLinkKey, .totalFileAllocatedSizeKey, .fileAllocatedSizeKey
+        .isDirectoryKey, .isSymbolicLinkKey, .totalFileAllocatedSizeKey, .fileAllocatedSizeKey,
+        .contentModificationDateKey
     ]
 
     private var path = ""
@@ -64,7 +67,7 @@ final class DiskScanner: @unchecked Sendable {
         // 第一层并行扫描,充分利用 M4 的多核
         DispatchQueue.concurrentPerform(iterations: entries.count) { i in
             let e = entries[i]
-            let n = self.build(e.url, isDir: e.isDir, size: e.size, inApp: false)
+            let n = self.build(e.url, isDir: e.isDir, size: e.size, mod: e.mod, inApp: false)
             resultLock.lock(); results[i] = n; resultLock.unlock()
         }
         let top = results.compactMap { $0 }
@@ -96,8 +99,9 @@ final class DiskScanner: @unchecked Sendable {
         node.children = kept.sorted { $0.size > $1.size }
     }
 
-    private func build(_ url: URL, isDir: Bool, size: Int64, inApp: Bool) -> Node {
+    private func build(_ url: URL, isDir: Bool, size: Int64, mod: Date? = nil, inApp: Bool) -> Node {
         let node = Node(url: url, isDir: isDir, size: size)
+        node.mod = isDir ? nil : mod
         if !isDir { add(size); return node }
         if isCancelled { return node }
         lock.lock(); path = url.path; lock.unlock()
@@ -118,7 +122,9 @@ final class DiskScanner: @unchecked Sendable {
             } else {
                 fileBytes += e.size
                 cats[Category.of(e.url, inApp: inApp).rawValue] += e.size
-                kids.append(Node(url: e.url, isDir: false, size: e.size))
+                let fileNode = Node(url: e.url, isDir: false, size: e.size)
+                fileNode.mod = e.mod
+                kids.append(fileNode)
             }
         }
         add(fileBytes)
@@ -137,7 +143,8 @@ final class DiskScanner: @unchecked Sendable {
             let v = try? u.resourceValues(forKeys: Set(Self.keys))
             if v?.isSymbolicLink == true { continue }
             let size = Int64(v?.totalFileAllocatedSize ?? v?.fileAllocatedSize ?? 0)
-            out.append(Entry(url: u, isDir: v?.isDirectory == true, size: size))
+            out.append(Entry(url: u, isDir: v?.isDirectory == true, size: size,
+                             mod: v?.contentModificationDate))
         }
         return out
     }
@@ -257,6 +264,8 @@ final class ViewModel: ObservableObject {
     @Published var bigFiles: [BigFile] = []     // 大文件排行榜
     @Published var bigFilter: Category? { didSet { refreshBigFiles() } }
     @Published var bigLimit = 100 { didSet { refreshBigFiles() } }
+    @Published var bigMinAgeMonths = 0 { didSet { refreshBigFiles() } }   // 0 = 不限修改时间
+    @Published var bigSort: BigSort = .size { didSet { refreshBigFiles() } }
     @Published var dupGroups: [DupGroup] = []   // 重复文件查找结果
     @Published var dupState: DupState = .idle
     @Published var dupStatus = ""

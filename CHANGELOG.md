@@ -8,6 +8,15 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions `0.1.0`
 
 ## [Unreleased]
 
+## [0.13.0] - 2026-11-06
+
+### Added / 新增
+- **Find large files you haven't touched in a long time**: the *Largest* tab can now filter to files not modified in 3+ months / 6+ months / 1+ year / 2+ years, and sort by *Oldest first*. Each row shows how long ago the file was modified (orange when over a year; hover for the exact date). / **找出很久没碰过的大文件**:「大文件」页新增按修改时间筛选(超过 3 个月 / 6 个月 / 1 年 / 2 年没修改)和「最久未修改在前」排序;每一行显示文件多久前修改的(超过一年显示成橙色,悬停可看确切日期)。
+- The list header shows the number of files and their total size. / 列表顶部显示文件个数和合计大小。
+
+### Changed / 变更
+- The scanner now records each file's last-modified time. Saved scan results from earlier versions are ignored once and rescanned automatically. / 扫描时会记录每个文件的最后修改时间。旧版本保存的扫描结果会被忽略一次,并自动重新扫描。
+
 ## [0.12.0] - 2026-11-06
 
 ### Added / 新增
