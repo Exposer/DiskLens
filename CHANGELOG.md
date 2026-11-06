@@ -11,6 +11,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions `0.1.0`
 ### Added / 新增
 - **Build number**: the app version is now shown as `1.0 (build N)` (e.g. in the About panel), where N is the number of commits, so every change gets a new build number automatically. / **Build 号**:应用版本现在显示为 `1.0 (build N)`(如「关于 DiskLens」里),N 为 git 提交数,每次改动提交后自动加 1。
 
+### Fixed / 修复
+- Packaging with `make_app.sh` no longer fails at code signing with "detritus not allowed" when the project lives in a Finder/iCloud-synced folder. / 项目放在 Finder / iCloud 同步的文件夹里时,用 `make_app.sh` 打包不再在签名步骤报 "detritus not allowed"。
+
 ### Changed / 变更
 - **Much lower memory while scanning**: small files (under 2 MB, which end up in the "Small items" bucket anyway) no longer get a node of their own during the scan, so scanning a disk with millions of files peaks at a fraction of the memory it used to. Totals, charts and cached results are unchanged. / **扫描时内存占用大幅降低**:小于 2 MB 的小文件(最后本来就合并进「小文件」)在扫描时不再单独建节点,扫描有几百万个文件的磁盘时内存峰值只有原来的一小部分。总大小、图表和缓存结果都不变。
 - **Smaller scan results in memory**: folders and files no longer each keep a full copy of their path or an ID string. / **扫描结果在内存里更小**:每个文件夹和文件不再各自保存一份完整路径和 ID 字符串。

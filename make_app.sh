@@ -3,8 +3,12 @@
 set -e
 cd "$(dirname "$0")"
 swift build -c release
-APP=DiskLens.app
-rm -rf "$APP"
+# 先在临时目录里组装并签名:项目放在 Documents / iCloud 里时,File Provider 会给 .app 目录加上
+# 清不掉的扩展属性,导致 codesign 报 "detritus not allowed"。签完再拷回项目目录。
+OUT=DiskLens.app
+STAGE="$(mktemp -d)"
+APP="$STAGE/DiskLens.app"
+rm -rf "$OUT"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp .build/release/DiskLens "$APP/Contents/MacOS/DiskLens"
 
@@ -33,5 +37,8 @@ cat > "$APP/Contents/Info.plist" <<EOF
   <key>NSHighResolutionCapable</key><true/>
 </dict></plist>
 EOF
+xattr -cr "$APP"
 codesign --force --sign - "$APP"
-echo "完成: $(pwd)/$APP  (版本 1.0, build $BUILD)"
+ditto --norsrc --noextattr "$APP" "$OUT"
+rm -rf "$STAGE"
+echo "完成: $(pwd)/$OUT  (版本 1.0, build $BUILD)"
