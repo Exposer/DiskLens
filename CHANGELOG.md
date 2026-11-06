@@ -8,6 +8,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions `0.1.0`
 
 ## [Unreleased]
 
+## [0.24.0] - 2026-11-06
+
 ### Added / 新增
 - **Three display styles** for the right-hand view: the existing *Ring* chart, a new *Squares* treemap (nested rectangles sized by space, click to drill in, *Up* button to go back, right-click for Collector / Reveal / Trash) and an expandable *Tree* list (chevrons to expand, size bars, percentages, double-click to open a folder). The choice is remembered. / 右侧视图新增**三种显示方式**:原来的「环形图」、新的「方块图」(按占用空间大小嵌套排布的方块,点击进入,「上一级」按钮返回,右键可加入收集器 / 在 Finder 中显示 / 移到废纸篓)和可展开的「树形列表」(箭头展开、带大小条和百分比、双击打开文件夹)。选择会被记住。
 - **Disk-read scan animation**: while scanning, a disk platter spins and a read head swings across the tracks, lighting up the sectors it reads, which then dim to a "read" color. / **读盘扫描动画**:扫描时显示一张旋转的盘片,磁头在磁道间来回寻道,读到的扇区会亮起,然后暗成「已读」的颜色。
