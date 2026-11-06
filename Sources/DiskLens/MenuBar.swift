@@ -19,9 +19,32 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     static weak var shared: AppDelegate?
     private(set) var mainWindow: NSWindow?
 
+    /// 这次是不是开机(登录)时自动启动的:true 时不弹窗口,只在菜单栏里待着
+    private var hideOnLaunch = false
+
     override init() {
         super.init()
         AppDelegate.shared = self
+    }
+
+    /// 是否由“登录时自动打开”启动的(必须在 applicationDidFinishLaunching 里读取)
+    private static var wasLaunchedAtLogin: Bool {
+        let event = NSAppleEventManager.shared().currentAppleEvent
+        return event?.eventID == kAEOpenApplication
+            && event?.paramDescriptor(forKeyword: keyAEPropData)?.enumCodeValue == keyAELaunchedAsLogInItem
+    }
+
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        let d = UserDefaults.standard
+        let menuBarOn = d.object(forKey: "showMenuBar") as? Bool ?? true
+        let wantsWindow = d.bool(forKey: "loginShowWindow")
+        // 开机自动启动 → 不弹窗口、不在 Dock 里跳。但如果菜单栏图标被关掉了,就没有入口可以打开窗口,此时照常显示。
+        if Self.wasLaunchedAtLogin && menuBarOn && !wantsWindow {
+            hideOnLaunch = true
+            NSApp.setActivationPolicy(.accessory)
+        } else {
+            NSApp.activate(ignoringOtherApps: true)
+        }
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
@@ -37,6 +60,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         mainWindow = window
         window.delegate = self
         window.isReleasedWhenClosed = false
+        if hideOnLaunch {
+            hideOnLaunch = false
+            hideQuietly(window)
+            // SwiftUI 可能在这之后才把窗口显示出来,所以窗口现在先设成完全透明、不响应鼠标,
+            // 即使它被显示了,用户也看不到、点不到;showMainWindow() 会恢复。
+            for delay in [0.2, 0.6, 1.5] {
+                DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
+                    guard let self, self.isQuiet else { return }
+                    window.orderOut(nil)
+                }
+            }
+        }
+    }
+
+    private var isQuiet = false
+
+    private func hideQuietly(_ window: NSWindow) {
+        isQuiet = true
+        window.alphaValue = 0
+        window.ignoresMouseEvents = true
+        window.orderOut(nil)
     }
 
     func windowShouldClose(_ sender: NSWindow) -> Bool {
@@ -45,8 +89,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
 
     func showMainWindow() {
+        // 开机启动时用的是“无 Dock 图标”模式,打开窗口时恢复成普通应用
+        NSApp.setActivationPolicy(.regular)
         NSApp.activate(ignoringOtherApps: true)
         guard let w = mainWindow else { return }
+        isQuiet = false
+        w.alphaValue = 1
+        w.ignoresMouseEvents = false
         if w.isMiniaturized { w.deminiaturize(nil) }
         w.makeKeyAndOrderFront(nil)
     }
@@ -104,6 +153,8 @@ struct MenuBarLabel: View {
                 Text(compactSize(u.available))
             }
         }
+        // 窗口被隐藏(比如开机自动启动)时,菜单栏图标是最先出现的界面,监控从这里也要能启动
+        .onAppear { monitor.start() }
     }
 }
 
@@ -113,6 +164,7 @@ struct MenuBarContent: View {
     @ObservedObject var monitor: DiskMonitor
     @AppStorage("menuBarShowText") private var showText = true
     @AppStorage("showMenuBar") private var showMenuBar = true
+    @AppStorage("loginShowWindow") private var loginShowWindow = false
     @State private var launchAtLogin = LaunchAtLogin.isEnabled
 
     var body: some View {
@@ -163,6 +215,12 @@ struct MenuBarContent: View {
             .help(LaunchAtLogin.available
                   ? tr("登录 Mac 后自动在菜单栏启动 DiskLens", "Start DiskLens in the menu bar when you log in")
                   : tr("只有打包后的 DiskLens.app 才能设置开机启动", "Only the packaged DiskLens.app can launch at login"))
+
+            Toggle(tr("开机启动时显示窗口", "Show the window when launched at login"), isOn: $loginShowWindow)
+                .toggleStyle(.checkbox)
+                .font(.callout)
+                .disabled(!LaunchAtLogin.available)
+                .help(tr("默认只在菜单栏里安静地启动,不弹出窗口", "By default DiskLens starts quietly in the menu bar without opening a window"))
 
             Divider()
 

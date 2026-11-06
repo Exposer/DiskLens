@@ -8,6 +8,16 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions `0.1.0`
 
 ## [Unreleased]
 
+## [0.22.0] - 2026-11-06
+
+### Added / 新增
+- **Quiet launch at login**: when DiskLens is started automatically at login it no longer opens its window or steals focus. It starts in the menu bar only (no Dock icon) and keeps monitoring; opening the window from the menu bar icon restores the normal Dock icon. / **开机启动时不弹窗口**:开机(登录)时自动启动的 DiskLens 不再打开窗口,也不抢焦点,只在菜单栏里安静地待着(没有 Dock 图标)并继续监控;从菜单栏图标打开窗口时会恢复正常的 Dock 图标。
+- A *Show the window when launched at login* checkbox in the menu bar panel for anyone who prefers the old behavior. / 菜单栏面板里新增「开机启动时显示窗口」复选框,想要原来行为的可以勾上。
+
+### Changed / 变更
+- If the menu bar icon is turned off, a login launch still shows the window, because there would otherwise be no way to open it. / 如果菜单栏图标被关掉了,开机启动时仍会显示窗口,否则就没有任何入口可以打开它。
+- Bringing the app to the front at launch moved into the app delegate so it can be skipped for login launches. / 启动时把窗口调到最前面的动作移到了 AppDelegate 里,这样开机启动时可以跳过。
+
 ## [0.21.0] - 2026-11-06
 
 ### Added / 新增

@@ -15,7 +15,7 @@ A native macOS disk-usage analyzer built with SwiftUI. See at a glance what is e
 - **File type breakdown** – switch the side panel to *File Types* to see video, audio, images, documents, archives/installers/disk images, apps, code and other, with a stacked overview bar. Click a type to list its largest files.
 - **Color by type** – in *File Types* mode the chart is colored by dominant file type; pick a type in the legend to highlight where it lives and fade out everything else.
 - **Purgeable space** – the bottom bar splits the startup volume into *used*, *purgeable* and *free*, so you can tell what macOS can reclaim by itself.
-- **Menu bar icon** – shows your available space and turns into a warning when the disk is nearly full; a capacity panel, launch at login, and quick access to the window. Closing the window only hides it, so monitoring and notifications keep running; quit with ⌘Q or from the menu bar panel.
+- **Menu bar icon** – shows your available space and turns into a warning when the disk is nearly full; a capacity panel, launch at login, and quick access to the window. Closing the window only hides it, so monitoring and notifications keep running; quit with ⌘Q or from the menu bar panel. When launched at login it starts quietly in the menu bar without opening a window (configurable).
 - **Low disk space alert** – checks the disk's available space (free + purgeable) every minute and shows a banner when it drops below your limit (below 10 / 20 / 50 / 100 GB or 10 / 15 / 20%). The packaged app can also send a system notification while it is in the background.
 - **Compare scans** – every complete scan is kept as a snapshot (latest 8 per folder). Compare the current scan with an earlier one to see what grew or shrank: total change, a drill-down folder hierarchy, and a list of new / grown / shrunk / removed files. When a scan finishes, a banner tells you how much the total changed since the last one.
 - **Usage by extension** – inside the *Types* tab, switch to *By extension* to rank every extension (`.mp4`, `.dmg`, `.swift`…) by size, filter them, and click one to see its largest files — the sunburst lights up where that extension lives. At the scan root the numbers are exact and include every small file.
@@ -116,7 +116,7 @@ make_app.sh            Builds DiskLens.app
 - **按文件类型汇总**:把侧边栏切到「文件类型」,可以看到视频、音频、图片、文档、压缩包/安装包/磁盘映像、应用程序、代码和其他的占比,并带一条堆叠总览条。点某个类型,列出该类型里最大的文件。
 - **按类型着色**:在「文件类型」模式下,环形图按主要文件类型着色;在图例里选一个类型,就能高亮它分布在哪里,其余部分变淡。
 - **可清除空间**:底部容量条把启动磁盘分成「已用」「可清除」「空闲」三段,让你知道哪些空间 macOS 会自动回收。
-- **菜单栏图标**:显示可用空间,磁盘快满时变成警告图标;有容量面板、开机自动启动和打开窗口的入口。关闭窗口只是隐藏,监控和通知继续工作;用 ⌘Q 或菜单栏面板退出。
+- **菜单栏图标**:显示可用空间,磁盘快满时变成警告图标;有容量面板、开机自动启动和打开窗口的入口。关闭窗口只是隐藏,监控和通知继续工作;用 ⌘Q 或菜单栏面板退出。开机自动启动时只在菜单栏里安静待着、不弹窗口(可在面板里改)。
 - **磁盘快满时提醒**:每分钟检查一次磁盘的可用空间(空闲 + 可清除),低于设定值(不足 10 / 20 / 50 / 100 GB 或 10% / 15% / 20%)时显示提示条;打包后的 App 在后台时还能发系统通知。
 - **对比扫描**:每次完整扫描都会保存一份快照(每个文件夹保留最近 8 份)。把当前扫描和之前的某次对比,看什么变大了、什么变小了:总大小变化、可逐层点进去的文件夹层级、新增 / 增长 / 减少 / 已删除的文件列表。每次扫描完成后,顶部还会提示总大小比上次多了或少了多少。
 - **按扩展名统计**:在「文件类型」页切到「按扩展名」,按大小排列所有扩展名(`.mp4`、`.dmg`、`.swift` 等),可筛选,点一个就能看它最大的文件,环形图会高亮它分布在哪里。在扫描根目录上数字是精确的,包含所有小文件。

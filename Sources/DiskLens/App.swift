@@ -9,9 +9,9 @@ struct DiskLensApp: App {
     @AppStorage("showMenuBar") private var showMenuBar = true
 
     init() {
-        // 作为 Swift Package 直接运行时,也要让它显示成普通窗口应用
+        // 作为 Swift Package 直接运行时,也要让它显示成普通窗口应用。
+        // 抢到最前面(activate)放在 AppDelegate 里做:开机自动启动时不能抢焦点。
         NSApplication.shared.setActivationPolicy(.regular)
-        NSApplication.shared.activate(ignoringOtherApps: true)
     }
 
     var body: some Scene {
