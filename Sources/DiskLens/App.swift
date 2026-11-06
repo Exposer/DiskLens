@@ -25,6 +25,7 @@ struct RootView: View {
     var body: some View {
         ContentView(vm: vm, onPrefsChange: { version += 1 })
             .id(version)
+            .onAppear { vm.startDiskMonitor() }
             .tint(Prefs.theme.accent)
             .preferredColorScheme(Prefs.theme.scheme)
     }

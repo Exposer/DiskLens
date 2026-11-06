@@ -8,6 +8,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions `0.1.0`
 
 ## [Unreleased]
 
+## [0.20.0] - 2026-11-06
+
+### Added / 新增
+- **Low disk space alert**: DiskLens checks the startup disk's *available* space (free + purgeable, the same figure Finder and System Settings show) once a minute. When it drops below your limit, a red banner appears at the top — "Disk space is running low: only 38 GB available (7%)" — with *Find space hogs* (jumps to the Hogs tab) and *Dismiss*. After the space recovers, the next drop alerts you again. / **磁盘快满时提醒**:DiskLens 每分钟检查一次启动磁盘的「可用空间」(空闲 + 可清除,和访达、系统设置里显示的一致)。低于你设定的值时,窗口顶部出现红色提示条,例如「磁盘空间不足:只剩 38 GB 可用(7%)」,带「找出占用大户」(直接跳到占用大户页)和「忽略」按钮;空间恢复后,下次再不足会重新提醒。
+- A **Space Alert** menu in the status bar to pick the limit: off, below 10 / 20 / 50 / 100 GB, or below 10% / 15% / 20% (default: below 10%). / 状态栏新增「**空间提醒**」菜单,可选阈值:关闭、不足 10 / 20 / 50 / 100 GB,或不足 10% / 15% / 20%(默认不足 10%)。
+- **System notification** when DiskLens is in the background (at most once every 6 hours). It only works in the packaged `DiskLens.app`; when run with `swift run` the option is disabled, because system notifications would crash an unpackaged build. / DiskLens 在后台时还会发**系统通知**(最多每 6 小时一次)。只有打包后的 `DiskLens.app` 支持;用 `swift run` 直接运行时该选项会置灰,因为未打包的程序调用系统通知会崩溃。
+
 ## [0.19.0] - 2026-11-06
 
 ### Added / 新增

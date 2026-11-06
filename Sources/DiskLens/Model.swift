@@ -299,6 +299,9 @@ final class ViewModel: ObservableObject {
     @Published var hogs: [HogItem] = []         // “占用大户”列表
     @Published var hogsLoading = false
     @Published var scanStopped = false          // 扫描被手动停止,当前结果不完整
+    @Published var lowSpace: VolumeUsage?       // 磁盘空间不足时的当前容量(nil = 没有不足)
+    @Published var lowSpaceDismissed = false    // 提示条被点了“忽略”
+    var diskTimer: Timer?
     @Published var showDiff = false             // 显示“对比扫描”窗口
     @Published var scanDelta: ScanDelta?        // 刚完成的扫描和上一次相比的变化(用于提示条)
     @Published var bigFiles: [BigFile] = []     // 大文件排行榜

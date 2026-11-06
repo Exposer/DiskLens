@@ -15,6 +15,7 @@ A native macOS disk-usage analyzer built with SwiftUI. See at a glance what is e
 - **File type breakdown** – switch the side panel to *File Types* to see video, audio, images, documents, archives/installers/disk images, apps, code and other, with a stacked overview bar. Click a type to list its largest files.
 - **Color by type** – in *File Types* mode the chart is colored by dominant file type; pick a type in the legend to highlight where it lives and fade out everything else.
 - **Purgeable space** – the bottom bar splits the startup volume into *used*, *purgeable* and *free*, so you can tell what macOS can reclaim by itself.
+- **Low disk space alert** – checks the disk's available space (free + purgeable) every minute and shows a banner when it drops below your limit (below 10 / 20 / 50 / 100 GB or 10 / 15 / 20%). The packaged app can also send a system notification while it is in the background.
 - **Compare scans** – every complete scan is kept as a snapshot (latest 8 per folder). Compare the current scan with an earlier one to see what grew or shrank: total change, a drill-down folder hierarchy, and a list of new / grown / shrunk / removed files. When a scan finishes, a banner tells you how much the total changed since the last one.
 - **Usage by extension** – inside the *Types* tab, switch to *By extension* to rank every extension (`.mp4`, `.dmg`, `.swift`…) by size, filter them, and click one to see its largest files — the sunburst lights up where that extension lives. At the scan root the numbers are exact and include every small file.
 - **Export reports** – export a Markdown report (capacity, file-type breakdown, largest folders and files, space hogs, duplicates, collector) or a CSV list of every scanned file ≥ 2 MB. Reports follow the UI language and show your home folder as `~`.
@@ -74,6 +75,7 @@ Sources/DiskLens/
 ├── Model.swift        Scanner, data model, sunburst layout, view model
 ├── Views.swift        Main window, file list, collector, sunburst view
 ├── Categories.swift   File type classification, type coloring, legend
+├── LowSpace.swift     Low disk space alert
 ├── Diff.swift         Compare scans
 ├── Extensions.swift   Usage by file extension
 ├── Report.swift       Markdown / CSV report export
@@ -112,6 +114,7 @@ make_app.sh            Builds DiskLens.app
 - **按文件类型汇总**:把侧边栏切到「文件类型」,可以看到视频、音频、图片、文档、压缩包/安装包/磁盘映像、应用程序、代码和其他的占比,并带一条堆叠总览条。点某个类型,列出该类型里最大的文件。
 - **按类型着色**:在「文件类型」模式下,环形图按主要文件类型着色;在图例里选一个类型,就能高亮它分布在哪里,其余部分变淡。
 - **可清除空间**:底部容量条把启动磁盘分成「已用」「可清除」「空闲」三段,让你知道哪些空间 macOS 会自动回收。
+- **磁盘快满时提醒**:每分钟检查一次磁盘的可用空间(空闲 + 可清除),低于设定值(不足 10 / 20 / 50 / 100 GB 或 10% / 15% / 20%)时显示提示条;打包后的 App 在后台时还能发系统通知。
 - **对比扫描**:每次完整扫描都会保存一份快照(每个文件夹保留最近 8 份)。把当前扫描和之前的某次对比,看什么变大了、什么变小了:总大小变化、可逐层点进去的文件夹层级、新增 / 增长 / 减少 / 已删除的文件列表。每次扫描完成后,顶部还会提示总大小比上次多了或少了多少。
 - **按扩展名统计**:在「文件类型」页切到「按扩展名」,按大小排列所有扩展名(`.mp4`、`.dmg`、`.swift` 等),可筛选,点一个就能看它最大的文件,环形图会高亮它分布在哪里。在扫描根目录上数字是精确的,包含所有小文件。
 - **导出报告**:可导出 Markdown 报告(容量、文件类型汇总、最大的文件夹和文件、占用大户、重复文件、收集器),或所有 2 MB 以上文件的 CSV 清单。报告语言跟随界面,个人文件夹显示为 `~`。
@@ -171,6 +174,7 @@ Sources/DiskLens/
 ├── Model.swift        扫描器、数据模型、环形图布局、ViewModel
 ├── Views.swift        主窗口、文件列表、收集器、环形图
 ├── Categories.swift   文件类型分类、按类型着色、图例
+├── LowSpace.swift     磁盘快满提醒
 ├── Diff.swift         对比扫描
 ├── Extensions.swift   按扩展名统计
 ├── Report.swift       Markdown / CSV 报告导出

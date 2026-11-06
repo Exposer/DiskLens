@@ -22,6 +22,10 @@ struct ContentView: View {
             toolbar
                 .background(Prefs.theme.bar)
             Divider()
+            if let u = vm.lowSpace, !vm.lowSpaceDismissed {
+                lowSpaceBanner(u)
+                Divider()
+            }
             if vm.isCached, let d = vm.scanDate {
                 cacheBanner(d)
                 Divider()
@@ -178,6 +182,31 @@ struct ContentView: View {
         .background(appAccent.opacity(0.14))
     }
 
+    /// 磁盘空间不足的提示
+    private func lowSpaceBanner(_ u: VolumeUsage) -> some View {
+        let pct = String(format: "%.0f", Double(u.available) / Double(max(u.total, 1)) * 100)
+        let purge = u.purgeable > 0
+            ? tr("(其中 \(formatSize(u.purgeable)) 是系统会自动释放的可清除空间)",
+                 " (\(formatSize(u.purgeable)) of it is purgeable space macOS frees on its own)")
+            : ""
+        return HStack(spacing: 8) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .foregroundStyle(.red)
+            Text(tr("磁盘空间不足:只剩 \(formatSize(u.available)) 可用(\(pct)%)\(purge)。",
+                    "Disk space is running low: only \(formatSize(u.available)) available (\(pct)%)\(purge)."))
+                .font(.callout)
+                .lineLimit(1)
+            Spacer()
+            if vm.current != nil {
+                Button(tr("找出占用大户", "Find space hogs")) { vm.viewMode = .hogs }
+            }
+            Button(tr("忽略", "Dismiss")) { vm.lowSpaceDismissed = true }
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 6)
+        .background(Color.red.opacity(0.14))
+    }
+
     /// 扫描完成后的提示:和上一次扫描相比,总共多了 / 少了多少
     private func deltaBanner(_ d: ScanDelta) -> some View {
         let when = relativeDate(d.prevDate)
@@ -237,6 +266,7 @@ struct ContentView: View {
     private var statusBar: some View {
         HStack(spacing: 12) {
             CapacityBar()
+            LowSpaceMenu(vm: vm)
             Spacer()
             CacheButton(vm: vm)
             Button(tr("部分目录打不开?授予「完全磁盘访问权限」",
