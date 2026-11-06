@@ -233,13 +233,52 @@ struct FileListView: View {
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
+            Picker("", selection: $vm.viewMode) {
+                ForEach(ViewMode.allCases, id: \.self) { Text($0.rawValue).tag($0) }
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .padding(.horizontal, 12)
+            .padding(.bottom, 8)
             Divider()
-            ScrollView {
-                LazyVStack(spacing: 0) {
-                    ForEach(node.children) { c in
-                        row(c)
+            if vm.viewMode == .folders {
+                ScrollView {
+                    LazyVStack(spacing: 0) {
+                        ForEach(node.children) { c in
+                            row(c)
+                        }
                     }
                 }
+            } else if let cat = vm.selectedCategory {
+                HStack {
+                    Button {
+                        vm.selectedCategory = nil
+                    } label: {
+                        Label("全部类型", systemImage: "chevron.left")
+                    }
+                    .buttonStyle(.link)
+                    Spacer()
+                    Image(systemName: cat.icon).foregroundStyle(cat.color)
+                    Text("\(cat.title) · 最大的 \(vm.topFiles.count) 个文件")
+                        .font(.callout)
+                        .lineLimit(1)
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 6)
+                Divider()
+                ScrollView {
+                    LazyVStack(spacing: 0) {
+                        ForEach(vm.topFiles) { c in
+                            row(c).help(c.url.path)
+                        }
+                    }
+                }
+                Text("只统计 2MB 以上的文件")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .padding(6)
+            } else {
+                CategoryListView(vm: vm, node: node)
             }
         }
     }

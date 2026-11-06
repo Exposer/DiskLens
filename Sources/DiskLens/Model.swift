@@ -16,6 +16,8 @@ final class Node: Identifiable, @unchecked Sendable {
     var size: Int64
     var children: [Node] = []
     weak var parent: Node?
+    /// 目录节点:整棵子树按文件类型汇总的字节数(下标 = Category.rawValue)。文件节点为空。
+    var cats: [Int64] = []
 
     init(url: URL, name: String? = nil, isDir: Bool, size: Int64 = 0) {
         self.url = url
@@ -60,10 +62,17 @@ final class DiskScanner: @unchecked Sendable {
         // 第一层并行扫描,充分利用 M4 的多核
         DispatchQueue.concurrentPerform(iterations: entries.count) { i in
             let e = entries[i]
-            let n = self.build(e.url, isDir: e.isDir, size: e.size)
+            let n = self.build(e.url, isDir: e.isDir, size: e.size, inApp: false)
             resultLock.lock(); results[i] = n; resultLock.unlock()
         }
-        finish(root, kids: results.compactMap { $0 })
+        let top = results.compactMap { $0 }
+        var cats = [Int64](repeating: 0, count: Category.count)
+        for n in top {
+            let t = n.categoryTotals(inApp: false)
+            for i in 0..<Category.count { cats[i] += t[i] }
+        }
+        root.cats = cats
+        finish(root, kids: top)
         return root
     }
 
@@ -85,23 +94,32 @@ final class DiskScanner: @unchecked Sendable {
         node.children = kept.sorted { $0.size > $1.size }
     }
 
-    private func build(_ url: URL, isDir: Bool, size: Int64) -> Node {
+    private func build(_ url: URL, isDir: Bool, size: Int64, inApp: Bool) -> Node {
         let node = Node(url: url, isDir: isDir, size: size)
         if !isDir { add(size); return node }
         if isCancelled { return node }
         lock.lock(); path = url.path; lock.unlock()
 
+        // .app 包里的所有文件都算“应用程序”
+        let inApp = inApp || url.pathExtension.lowercased() == "app"
+        var cats = [Int64](repeating: 0, count: Category.count)
         var kids: [Node] = []
         var fileBytes: Int64 = 0
         for e in list(url) {
             if e.isDir {
-                kids.append(build(e.url, isDir: true, size: 0))
+                let c = build(e.url, isDir: true, size: 0, inApp: inApp)
+                if c.cats.count == Category.count {
+                    for i in 0..<Category.count { cats[i] += c.cats[i] }
+                }
+                kids.append(c)
             } else {
                 fileBytes += e.size
+                cats[Category.of(e.url, inApp: inApp).rawValue] += e.size
                 kids.append(Node(url: e.url, isDir: false, size: e.size))
             }
         }
         add(fileBytes)
+        node.cats = cats
         finish(node, kids: kids)
         return node
     }
@@ -210,7 +228,10 @@ struct RingGeometry {
 @MainActor
 final class ViewModel: ObservableObject {
     @Published var root: Node?
-    @Published var current: Node? { didSet { rebuild(); startReveal() } }
+    @Published var current: Node? { didSet { rebuild(); startReveal(); refreshTopFiles() } }
+    @Published var viewMode: ViewMode = .folders { didSet { refreshTopFiles() } }
+    @Published var selectedCategory: Category? { didSet { refreshTopFiles() } }
+    @Published var topFiles: [Node] = []        // “按类型”模式下,所选类型里最大的文件
     @Published var hovered: Node?
     @Published var scanning = false
     @Published var scannedBytes: Int64 = 0
@@ -250,7 +271,7 @@ final class ViewModel: ObservableObject {
         scanner = s
         target = url
         root = nil; current = nil; hovered = nil
-        collected = []; scanningPath = ""
+        collected = []; scanningPath = ""; selectedCategory = nil
         scanning = true
         scannedBytes = 0
 
@@ -296,9 +317,16 @@ final class ViewModel: ObservableObject {
             do {
                 try FileManager.default.trashItem(at: n.url, resultingItemURL: nil)
                 let s = n.size
+                let t = n.categoryTotals(inApp: n.parent?.isInsideApp ?? false)
                 var p = n.parent
                 n.parent?.children.removeAll { $0 === n }
-                while let q = p { q.size -= s; p = q.parent }
+                while let q = p {
+                    q.size -= s
+                    if q.cats.count == Category.count {
+                        for i in 0..<Category.count { q.cats[i] = max(0, q.cats[i] - t[i]) }
+                    }
+                    p = q.parent
+                }
                 collected.removeAll { $0 === n }
             } catch {
                 failures.append("\(n.name): \(error.localizedDescription)")
@@ -306,8 +334,31 @@ final class ViewModel: ObservableObject {
         }
         hovered = nil
         rebuild()
+        refreshTopFiles()
         objectWillChange.send()
         if !failures.isEmpty { errorMessage = failures.joined(separator: "\n") }
+    }
+
+    // MARK: 按文件类型
+
+    /// 当前目录下、所选类型里最大的文件(仅统计已保留的 ≥2MB 的文件)
+    func refreshTopFiles() {
+        guard viewMode == .types, let cat = selectedCategory, let cur = current else {
+            topFiles = []
+            return
+        }
+        var out: [Node] = []
+        func walk(_ n: Node, inApp: Bool) {
+            for c in n.children where !c.isAggregate {
+                if c.isDir {
+                    walk(c, inApp: inApp || c.url.pathExtension.lowercased() == "app")
+                } else if Category.of(c.url, inApp: inApp) == cat {
+                    out.append(c)
+                }
+            }
+        }
+        walk(cur, inApp: cur.isInsideApp)
+        topFiles = Array(out.sorted { $0.size > $1.size }.prefix(200))
     }
 
     // MARK: 展开动画
