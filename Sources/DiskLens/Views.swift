@@ -264,23 +264,43 @@ struct ContentView: View {
         .background(Color.orange.opacity(0.14))
     }
 
+    /// 状态栏:窗口变窄时依次换成更紧凑的版本(权限链接缩成图标 → 容量图例合并成一个“可用”数字),
+    /// 而不是让文字挤成竖排
     private var statusBar: some View {
+        ViewThatFits(in: .horizontal) {
+            statusRow(compactCapacity: false, shortLink: false)
+            statusRow(compactCapacity: false, shortLink: true)
+            statusRow(compactCapacity: true, shortLink: true)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 6)
+    }
+
+    private func statusRow(compactCapacity: Bool, shortLink: Bool) -> some View {
         HStack(spacing: 12) {
-            CapacityBar()
+            CapacityBar(compact: compactCapacity)
             LowSpaceMenu(monitor: monitor)
-            Spacer()
+            Spacer(minLength: 8)
             CacheButton(vm: vm)
-            Button(tr("部分目录打不开?授予「完全磁盘访问权限」",
-                      "Some folders won't open? Grant Full Disk Access")) {
+            Button {
                 if let u = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles") {
                     NSWorkspace.shared.open(u)
+                }
+            } label: {
+                if shortLink {
+                    Image(systemName: "lock.open")
+                } else {
+                    Text(tr("部分目录打不开?授予「完全磁盘访问权限」",
+                            "Some folders won't open? Grant Full Disk Access"))
+                        .lineLimit(1)
+                        .fixedSize()
                 }
             }
             .buttonStyle(.link)
             .font(.caption)
+            .help(tr("部分目录打不开?授予「完全磁盘访问权限」",
+                     "Some folders won't open? Grant Full Disk Access"))
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 6)
     }
 
     private func chooseFolder() {
@@ -308,6 +328,8 @@ struct CacheButton: View {
                   ? tr("清除缓存 (\(formatSize(size)))", "Clear Cache (\(formatSize(size)))")
                   : tr("无缓存", "No Cache"),
                   systemImage: "trash.slash")
+                .lineLimit(1)
+                .fixedSize()
         }
         .buttonStyle(.link)
         .font(.caption)

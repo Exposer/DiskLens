@@ -31,6 +31,8 @@ struct VolumeUsage {
 }
 
 struct CapacityBar: View {
+    /// 窗口很窄时用紧凑版:一条短的容量条 + 一个“可用”数字,不再显示三个图例
+    var compact = false
     @State private var usage = VolumeUsage.read()
     @State private var showInfo = false
 
@@ -42,10 +44,17 @@ struct CapacityBar: View {
         HStack(spacing: 12) {
             if let u = usage {
                 bar(u)
-                    .frame(width: 220, height: 10)
-                legend(color: usedColor, title: tr("已用", "Used"), bytes: u.used)
-                legend(color: purgeColor, title: tr("可清除", "Purgeable"), bytes: u.purgeable)
-                legend(color: freeColor, title: tr("空闲", "Free"), bytes: u.free)
+                    .frame(width: compact ? 110 : 220, height: 10)
+                if compact {
+                    Text(tr("可用 \(formatSize(u.available))", "\(formatSize(u.available)) available"))
+                        .font(.caption.monospacedDigit())
+                        .lineLimit(1)
+                        .fixedSize()
+                } else {
+                    legend(color: usedColor, title: tr("已用", "Used"), bytes: u.used)
+                    legend(color: purgeColor, title: tr("可清除", "Purgeable"), bytes: u.purgeable)
+                    legend(color: freeColor, title: tr("空闲", "Free"), bytes: u.free)
+                }
                 Button {
                     showInfo.toggle()
                 } label: {
@@ -86,6 +95,8 @@ struct CapacityBar: View {
             Circle().fill(color).frame(width: 8, height: 8)
             Text("\(title) \(formatSize(bytes))")
                 .font(.caption.monospacedDigit())
+                .lineLimit(1)
+                .fixedSize()          // 宽度不够时由上层换成紧凑版,而不是把文字挤成竖排
         }
     }
 
