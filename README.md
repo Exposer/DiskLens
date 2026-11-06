@@ -70,6 +70,10 @@ Sources/DiskLens/
 ├── Model.swift        Scanner, data model, sunburst layout, view model
 ├── Views.swift        Main window, file list, collector, sunburst view
 ├── Categories.swift   File type classification, type coloring, legend
+├── Hogs.swift         Space Hogs tab
+├── Duplicates.swift   Duplicate file finder
+├── Persistence.swift  Saved scan results
+├── Settings.swift     Language, themes, preferences
 └── Capacity.swift     Used / purgeable / free volume bar
 Resources/AppIcon.png  1024×1024 app icon source
 make_app.sh            Builds DiskLens.app

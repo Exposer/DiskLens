@@ -14,13 +14,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions `0.1.0`
 - **Duplicate file finder** (new *Duplicates* tab): searches the folder you are viewing for identical files with a minimum size of 1 / 10 / 100 MB. It groups by size, quick-hashes the first and last 64 KB, then confirms with a full SHA-256, using all CPU cores; it can be stopped at any time. Hard links are not counted as duplicates, and app bundles, `.git`, `node_modules` and `~/Library` are skipped for safety. / **重复文件查找**(新增「重复文件」页):在当前查看的文件夹里查找内容完全相同的文件,最小大小可选 1 / 10 / 100 MB。先按大小分组,再对首尾 64 KB 做快速哈希,最后用完整 SHA-256 确认,多核并行,可随时停止。硬链接不算重复;为安全起见,不包含应用包内部、`.git`、`node_modules` 和 `~/Library`。
 - Per group: expand to see every copy's folder and modified date; reveal in Finder; *Keep this one* (adds all the others to the Collector); add a single copy to the Collector. At least one copy of each group is always kept. / 每组可展开查看每份的所在文件夹和修改时间,支持在 Finder 中显示、「保留这一份」(其余全部加入收集器)、单独加入收集器;每组始终至少保留一份。
 - *Keep the oldest of each* – one click adds every group's extra copies to the Collector. / 「每组保留最早的一份」:一键把每组多出来的副本都加入收集器。
+- `CHANGELOG.md`, plus a contributor rule (`CLAUDE.md`) and a pre-commit hook (`.githooks/pre-commit`) so every code change must come with a changelog entry. / 新增更新日志,以及约定文件 `CLAUDE.md` 和提交前检查脚本,保证每次改动都要同步写入更新日志。
 
 ### Changed / 变更
 - The side-panel tab labels are shorter (*Types*, *Hogs*) so four tabs fit. / 侧边栏标签名称缩短(英文 *Types*、*Hogs*),以便放下四个标签。
 - After items are moved to the Trash, the duplicate results are refreshed automatically. / 移到废纸篓后,重复文件结果会自动刷新。
 
-### Added / 新增
-- `CHANGELOG.md`, plus a contributor rule (`CLAUDE.md`) and a pre-commit hook (`.githooks/pre-commit`) so every code change must come with a changelog entry. / 新增更新日志,以及约定文件 `CLAUDE.md` 和提交前检查脚本,保证每次改动都要同步写入更新日志。
+### Fixed / 修复
+- README project layout now lists every source file. / README 的项目结构补全了所有源文件。
 
 ## [0.10.0] - 2026-11-06
 
