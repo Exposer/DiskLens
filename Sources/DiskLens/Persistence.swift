@@ -79,10 +79,15 @@ enum ScanStore {
 
     /// 读出一份快照的日期和总大小(要解码整个文件,只在没有记录大小的旧快照上才用)
     private static func snapshotSummary(at url: URL) -> (date: Date, size: Int64)? {
-        guard let data = try? Data(contentsOf: url),
-              let snap = try? JSONDecoder().decode(ScanSnapshot.self, from: data),
-              snap.version >= 2 else { return nil }
+        guard let snap = decode(at: url), snap.version >= 2 else { return nil }
         return (snap.date, snap.root.s)
+    }
+
+    /// 解码一份快照。文件用内存映射读取(不在堆里再复制一份),并且函数返回时原始数据就已释放,
+    /// 不会和随后构建的节点树同时占着内存。
+    private static func decode(at url: URL) -> ScanSnapshot? {
+        guard let data = try? Data(contentsOf: url, options: .mappedIfSafe) else { return nil }
+        return try? JSONDecoder().decode(ScanSnapshot.self, from: data)
     }
 
     /// 新扫描完成、写入之前:上一次扫描的日期和总大小,用来提示“比上次多了多少”
@@ -98,8 +103,7 @@ enum ScanStore {
 
     /// 读取某个历史快照
     static func loadSnapshot(at url: URL) -> (root: Node, date: Date)? {
-        guard let data = try? Data(contentsOf: url),
-              let snap = try? JSONDecoder().decode(ScanSnapshot.self, from: data),
+        guard let snap = decode(at: url),
               snap.version == 2 || snap.version == 3,
               snap.root.c?.count == Category.count else { return nil }
         return (node(from: snap.root, url: URL(fileURLWithPath: snap.path), parent: nil), snap.date)
@@ -125,9 +129,23 @@ enum ScanStore {
         n.mod = dto.m.map { Date(timeIntervalSince1970: $0) }
         n.extTotals = dto.x
         n.parent = parent
+        n.children.reserveCapacity(dto.k?.count ?? 0)
         for k in dto.k ?? [] {
-            let childURL = k.a == true ? url : url.appendingPathComponent(k.n, isDirectory: k.d)
-            n.children.append(node(from: k, url: childURL, parent: n))
+            n.children.append(child(from: k, parent: n))
+        }
+        return n
+    }
+
+    /// 非根节点不单独保存 URL(见 Node.url),省内存
+    private static func child(from dto: NodeDTO, parent: Node) -> Node {
+        let n = Node(name: dto.n, isDir: dto.d, size: dto.s)
+        n.isAggregate = dto.a == true
+        n.cats = dto.c ?? []
+        n.mod = dto.m.map { Date(timeIntervalSince1970: $0) }
+        n.parent = parent
+        n.children.reserveCapacity(dto.k?.count ?? 0)
+        for k in dto.k ?? [] {
+            n.children.append(child(from: k, parent: n))
         }
         return n
     }
@@ -149,7 +167,7 @@ enum ScanStore {
         // 第一次保存历史前,把已有的“最新结果”也并入历史,这样马上就能和它对比
         let latest = fileURL(for: snap.path)
         if history(for: snap.path).isEmpty,
-           let oldData = try? Data(contentsOf: latest),
+           let oldData = try? Data(contentsOf: latest, options: .mappedIfSafe),
            let old = try? JSONDecoder().decode(ScanSnapshot.self, from: oldData),
            old.path == snap.path, old.version >= 2 {
             try? oldData.write(to: historyFile(snap.path, date: old.date, size: old.root.s), options: .atomic)
@@ -165,8 +183,7 @@ enum ScanStore {
     }
 
     static func load(path: String) -> (root: Node, date: Date)? {
-        guard let data = try? Data(contentsOf: fileURL(for: path)),
-              let snap = try? JSONDecoder().decode(ScanSnapshot.self, from: data),
+        guard let snap = decode(at: fileURL(for: path)),
               snap.version == 2 || snap.version == 3,
               snap.path == path,
               // 文件类型数量变了(比如新版本增加了分类),旧缓存作废

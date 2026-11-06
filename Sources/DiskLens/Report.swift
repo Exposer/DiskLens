@@ -71,9 +71,9 @@ enum ReportBuilder {
         func walk(_ n: Node, inApp: Bool) {
             for c in n.children where !c.isAggregate {
                 if c.isDir {
-                    walk(c, inApp: inApp || c.url.pathExtension.lowercased() == "app")
+                    walk(c, inApp: inApp || c.isAppBundle)
                 } else {
-                    out.append((node: c, cat: Category.of(c.url, inApp: inApp)))
+                    out.append((node: c, cat: Category.of(ext: c.ext, inApp: inApp)))
                 }
             }
         }

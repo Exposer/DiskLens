@@ -91,6 +91,7 @@ final class DiskMonitor: ObservableObject {
         timer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in
             Task { @MainActor in self?.check() }
         }
+        timer?.tolerance = 15      // 允许系统把唤醒和别的任务合并,省电
     }
 
     /// 检查一次;设置改变后也会马上调用

@@ -8,6 +8,17 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions `0.1.0`
 
 ## [Unreleased]
 
+### Added / 新增
+- **Build number**: the app version is now shown as `1.0 (build N)` (e.g. in the About panel), where N is the number of commits, so every change gets a new build number automatically. / **Build 号**:应用版本现在显示为 `1.0 (build N)`(如「关于 DiskLens」里),N 为 git 提交数,每次改动提交后自动加 1。
+
+### Changed / 变更
+- **Much lower memory while scanning**: small files (under 2 MB, which end up in the "Small items" bucket anyway) no longer get a node of their own during the scan, so scanning a disk with millions of files peaks at a fraction of the memory it used to. Totals, charts and cached results are unchanged. / **扫描时内存占用大幅降低**:小于 2 MB 的小文件(最后本来就合并进「小文件」)在扫描时不再单独建节点,扫描有几百万个文件的磁盘时内存峰值只有原来的一小部分。总大小、图表和缓存结果都不变。
+- **Smaller scan results in memory**: folders and files no longer each keep a full copy of their path or an ID string. / **扫描结果在内存里更小**:每个文件夹和文件不再各自保存一份完整路径和 ID 字符串。
+- Scanning, duplicate search and the Space Hogs measurement now release temporary system objects as they go instead of piling them up until the job ends. / 扫描、查找重复文件和统计占用大户时会边做边释放系统产生的临时对象,不再堆到任务结束才释放。
+- Saved scans are read through memory mapping and the raw file data is released before the in-memory tree is built, so loading a cached scan needs less memory at once. / 读取已保存的扫描结果时改用内存映射,并在构建内存中的树之前释放原始数据,载入缓存时同一时刻占用的内存更少。
+- Duplicate search runs at background priority and no longer fills the system file cache with files it reads only once, so the Mac stays responsive and other apps keep their cache. / 查找重复文件改为后台优先级运行,并且不再用只读一遍的文件占满系统文件缓存,Mac 保持流畅,其他程序的缓存也不会被挤掉。
+- The scanning animation is capped at 30 fps, and background timers (progress, disk monitor) allow the system to coalesce wake-ups, which lowers CPU use and energy impact. / 扫描动画限制为 30 帧/秒,后台定时器(进度、磁盘监控)允许系统合并唤醒,降低 CPU 占用和耗电。
+
 ## [0.23.0] - 2026-11-06
 
 ### Added / 新增

@@ -49,23 +49,30 @@ enum DupFinder {
                                      errorHandler: { _, _ in true }) else { return [] }
         var bySize: [Int64: [DupFile]] = [:]
         var seen = 0
-        while let obj = en.nextObject() {
-            if job.isCancelled { return [] }
-            guard let u = obj as? URL, let v = try? u.resourceValues(forKeys: Set(keys)) else { continue }
-            if v.isSymbolicLink == true { continue }
-            if v.isDirectory == true {
-                if skipNames.contains(u.lastPathComponent) || u.standardizedFileURL.path == libraryPath {
-                    en.skipDescendants()
+        let keySet = Set(keys)
+        var finished = false
+        while !finished {
+            // 每个条目一个自动释放池:否则整个遍历期间的临时对象都不会释放
+            autoreleasepool {
+                guard let obj = en.nextObject() else { finished = true; return }
+                if job.isCancelled { finished = true; return }
+                guard let u = obj as? URL, let v = try? u.resourceValues(forKeys: keySet) else { return }
+                if v.isSymbolicLink == true { return }
+                if v.isDirectory == true {
+                    if skipNames.contains(u.lastPathComponent) || u.standardizedFileURL.path == libraryPath {
+                        en.skipDescendants()
+                    }
+                    return
                 }
-                continue
-            }
-            guard v.isRegularFile == true, let sz = v.fileSize, Int64(sz) >= minSize else { continue }
-            bySize[Int64(sz), default: []].append(DupFile(url: u, mod: v.contentModificationDate))
-            seen += 1
-            if seen % 200 == 0 {
-                job.set(tr("正在列出文件… 已找到 \(seen) 个候选", "Listing files… \(seen) candidates"))
+                guard v.isRegularFile == true, let sz = v.fileSize, Int64(sz) >= minSize else { return }
+                bySize[Int64(sz), default: []].append(DupFile(url: u, mod: v.contentModificationDate))
+                seen += 1
+                if seen % 200 == 0 {
+                    job.set(tr("正在列出文件… 已找到 \(seen) 个候选", "Listing files… \(seen) candidates"))
+                }
             }
         }
+        if job.isCancelled { return [] }
 
         // 2. 只保留大小相同的组;硬链接(同一个 inode)不算重复,因为不占额外空间
         var candidates: [(Int64, [DupFile])] = []
@@ -132,8 +139,14 @@ enum DupFinder {
     }
 
     private static func hash(url: URL, size: Int64, partial: Bool, job: DupJob) -> String? {
+        autoreleasepool { hashFile(url: url, size: size, partial: partial, job: job) }
+    }
+
+    private static func hashFile(url: URL, size: Int64, partial: Bool, job: DupJob) -> String? {
         guard let h = try? FileHandle(forReadingFrom: url) else { return nil }
         defer { try? h.close() }
+        // 只读一遍的文件不要塞满系统文件缓存,否则会把其他程序用的缓存挤出去
+        _ = fcntl(h.fileDescriptor, F_NOCACHE, 1)
         var hasher = SHA256()
         if partial {
             let part = 64 * 1024
@@ -144,8 +157,12 @@ enum DupFinder {
             }
         } else {
             while !job.isCancelled {
-                guard let d = try? h.read(upToCount: 1 << 20), !d.isEmpty else { break }
-                hasher.update(data: d)
+                let more: Bool = autoreleasepool {
+                    guard let d = try? h.read(upToCount: 1 << 20), !d.isEmpty else { return false }
+                    hasher.update(data: d)
+                    return true
+                }
+                if !more { break }
             }
             if job.isCancelled { return nil }
         }
@@ -173,8 +190,9 @@ extension ViewModel {
             let s = job.status
             Task { @MainActor in self?.dupStatus = s }
         }
+        dupTimer?.tolerance = 0.1
 
-        Task.detached(priority: .userInitiated) { [weak self] in
+        Task.detached(priority: .utility) { [weak self] in
             let groups = DupFinder.find(root: folder, minSize: minSize, job: job)
             await MainActor.run {
                 guard let self, self.dupJob === job else { return }

@@ -64,11 +64,11 @@ enum ExtStats {
                 if c.isAggregate {
                     small += c.size
                 } else if c.isDir {
-                    walk(c, inApp: inApp || c.url.pathExtension.lowercased() == "app")
+                    walk(c, inApp: inApp || c.isAppBundle)
                 } else {
-                    let k = extKey(c.url)
+                    let k = c.ext
                     var s = dict[k] ?? ExtStat(ext: k, bytes: 0, count: 0,
-                                               category: Category.of(c.url, inApp: inApp))
+                                               category: Category.of(ext: c.ext, inApp: inApp))
                     s.bytes += c.size
                     s.count += 1
                     dict[k] = s
@@ -102,12 +102,12 @@ extension ViewModel {
             extHighlight = [:]
             return
         }
-        var d: [UUID: Int64] = [:]
+        var d: [ObjectIdentifier: Int64] = [:]
         @discardableResult
         func walk(_ n: Node) -> Int64 {
             if n.isAggregate { return 0 }
             if !n.isDir {
-                let b: Int64 = extKey(n.url) == e ? n.size : 0
+                let b: Int64 = n.ext == e ? n.size : 0
                 d[n.id] = b
                 return b
             }

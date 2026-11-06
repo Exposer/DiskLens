@@ -18,7 +18,7 @@ enum BigSort: CaseIterable, Hashable {
 struct BigFile: Identifiable {
     let node: Node
     let category: Category
-    var id: UUID { node.id }
+    var id: ObjectIdentifier { node.id }
     var mod: Date? { node.mod }
 }
 
@@ -37,9 +37,9 @@ extension ViewModel {
         func walk(_ n: Node, inApp: Bool) {
             for c in n.children where !c.isAggregate {
                 if c.isDir {
-                    walk(c, inApp: inApp || c.url.pathExtension.lowercased() == "app")
+                    walk(c, inApp: inApp || c.isAppBundle)
                 } else {
-                    let cat = Category.of(c.url, inApp: inApp)
+                    let cat = Category.of(ext: c.ext, inApp: inApp)
                     if let f = filter, f != cat { continue }
                     if let cutoff {
                         guard let m = c.mod, m < cutoff else { continue }

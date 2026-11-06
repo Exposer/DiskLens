@@ -355,7 +355,7 @@ struct ScanningView: View {
     var body: some View {
         VStack(spacing: 14) {
             ZStack {
-                TimelineView(.animation) { tl in
+                TimelineView(.animation(minimumInterval: 1.0 / 30)) { tl in
                     Canvas { ctx, size in
                         let t = tl.date.timeIntervalSinceReferenceDate
                         let g = RingGeometry(size: size)

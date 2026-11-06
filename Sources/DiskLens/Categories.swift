@@ -76,8 +76,13 @@ enum Category: Int, CaseIterable, Identifiable {
     }()
 
     static func of(_ url: URL, inApp: Bool) -> Category {
+        of(ext: url.pathExtension.lowercased(), inApp: inApp)
+    }
+
+    /// `ext` 必须已经是小写扩展名
+    static func of(ext: String, inApp: Bool) -> Category {
         if inApp { return .app }
-        return table[url.pathExtension.lowercased()] ?? .other
+        return table[ext] ?? .other
     }
 }
 
@@ -89,7 +94,7 @@ extension Node {
             return cats.count == Category.count ? cats : t
         }
         if isAggregate { return t }
-        t[Category.of(url, inApp: inApp).rawValue] = size
+        t[Category.of(ext: ext, inApp: inApp).rawValue] = size
         return t
     }
 
@@ -97,7 +102,7 @@ extension Node {
     var isInsideApp: Bool {
         var n: Node? = self
         while let x = n {
-            if x.url.pathExtension.lowercased() == "app" && !x.isAggregate { return true }
+            if !x.isAggregate && x.isAppBundle { return true }
             n = x.parent
         }
         return false

@@ -8,8 +8,11 @@ func formatSize(_ bytes: Int64) -> String {
 // MARK: - 数据模型
 
 final class Node: Identifiable, @unchecked Sendable {
-    let id = UUID()
-    let url: URL
+    /// 节点身份直接用对象地址,省掉每个节点一个 UUID
+    var id: ObjectIdentifier { ObjectIdentifier(self) }
+    /// 只有根节点和独立节点(占用大户、重复文件等)保存完整 URL;
+    /// 扫描树里的其他节点只存名字,需要时由上级的 URL 拼出来,省下每个节点一份路径字符串。
+    private var storedURL: URL?
     let name: String
     let isDir: Bool
     var isAggregate = false          // “小文件”合并节点
@@ -24,11 +27,36 @@ final class Node: Identifiable, @unchecked Sendable {
     var extTotals: [String: ExtTotal]?
 
     init(url: URL, name: String? = nil, isDir: Bool, size: Int64 = 0) {
-        self.url = url
+        self.storedURL = url
         self.name = name ?? (url.lastPathComponent.isEmpty ? url.path : url.lastPathComponent)
         self.isDir = isDir
         self.size = size
     }
+
+    /// 没有自己的 URL:路径由 parent 链推出(必须随后挂到某个上级下面)
+    init(name: String, isDir: Bool, size: Int64 = 0) {
+        self.storedURL = nil
+        self.name = name
+        self.isDir = isDir
+        self.size = size
+    }
+
+    var url: URL {
+        if let u = storedURL { return u }
+        guard let p = parent else { return URL(fileURLWithPath: name) }
+        return isAggregate ? p.url : p.url.appendingPathComponent(name, isDirectory: isDir)
+    }
+
+    /// 已经挂到上级下面之后,丢掉自己保存的 URL(之后按需拼出)
+    func releaseURL() { if parent != nil { storedURL = nil } }
+
+    /// 小写扩展名,不用拼完整 URL
+    var ext: String {
+        if let u = storedURL { return u.pathExtension.lowercased() }
+        return (name as NSString).pathExtension.lowercased()
+    }
+
+    var isAppBundle: Bool { ext == "app" }
 }
 
 // MARK: - 扫描器
@@ -49,6 +77,7 @@ final class DiskScanner: @unchecked Sendable {
         .isDirectoryKey, .isSymbolicLinkKey, .totalFileAllocatedSizeKey, .fileAllocatedSizeKey,
         .contentModificationDateKey
     ]
+    private static let keySet = Set(keys)
 
     private var path = ""
     private var extTotals: [String: ExtTotal] = [:]
@@ -97,16 +126,17 @@ final class DiskScanner: @unchecked Sendable {
         return root
     }
 
-    private func finish(_ node: Node, kids: [Node]) {
-        var total: Int64 = 0
-        var small: Int64 = 0
+    /// `extraSmall`:调用方已经直接累加、没有建节点的小文件字节数
+    private func finish(_ node: Node, kids: [Node], extraSmall: Int64 = 0) {
+        var total: Int64 = extraSmall
+        var small: Int64 = extraSmall
         var kept: [Node] = []
         for k in kids {
             total += k.size
-            if k.size >= threshold { k.parent = node; kept.append(k) } else { small += k.size }
+            if k.size >= threshold { k.parent = node; k.releaseURL(); kept.append(k) } else { small += k.size }
         }
         if small > 0 {
-            let agg = Node(url: node.url, name: "小文件 / Small items", isDir: false, size: small)
+            let agg = Node(name: "小文件 / Small items", isDir: false, size: small)
             agg.isAggregate = true
             agg.parent = node
             kept.append(agg)
@@ -131,6 +161,7 @@ final class DiskScanner: @unchecked Sendable {
         var cats = [Int64](repeating: 0, count: Category.count)
         var kids: [Node] = []
         var fileBytes: Int64 = 0
+        var smallFileBytes: Int64 = 0
         var localExts: [String: ExtTotal] = [:]
         for e in list(url) {
             if isCancelled { break }
@@ -144,32 +175,40 @@ final class DiskScanner: @unchecked Sendable {
                 fileBytes += e.size
                 localExts[extKey(e.url), default: ExtTotal()].add(e.size)
                 cats[Category.of(e.url, inApp: inApp).rawValue] += e.size
-                let fileNode = Node(url: e.url, isDir: false, size: e.size)
-                fileNode.mod = e.mod
-                kids.append(fileNode)
+                // 小文件最后都会被合并掉,所以根本不建节点——扫描时的峰值内存因此小得多
+                if e.size >= threshold {
+                    let fileNode = Node(url: e.url, isDir: false, size: e.size)
+                    fileNode.mod = e.mod
+                    kids.append(fileNode)
+                } else {
+                    smallFileBytes += e.size
+                }
             }
         }
         add(fileBytes)
         mergeExts(localExts)
         node.cats = cats
-        finish(node, kids: kids)
+        finish(node, kids: kids, extraSmall: smallFileBytes)
         return node
     }
 
     private func list(_ url: URL) -> [Entry] {
-        guard let items = try? FileManager.default.contentsOfDirectory(
-            at: url, includingPropertiesForKeys: Self.keys, options: []) else { return [] }
-        var out: [Entry] = []
-        out.reserveCapacity(items.count)
-        for u in items {
-            if Self.skipPaths.contains(u.path) { continue }
-            let v = try? u.resourceValues(forKeys: Set(Self.keys))
-            if v?.isSymbolicLink == true { continue }
-            let size = Int64(v?.totalFileAllocatedSize ?? v?.fileAllocatedSize ?? 0)
-            out.append(Entry(url: u, isDir: v?.isDirectory == true, size: size,
-                             mod: v?.contentModificationDate))
+        // 扫描线程里没有自动释放池的回收点:不包一层,Foundation 产生的临时对象会一直堆到整棵子树扫完
+        autoreleasepool {
+            guard let items = try? FileManager.default.contentsOfDirectory(
+                at: url, includingPropertiesForKeys: Self.keys, options: []) else { return [] }
+            var out: [Entry] = []
+            out.reserveCapacity(items.count)
+            for u in items {
+                if Self.skipPaths.contains(u.path) { continue }
+                let v = try? u.resourceValues(forKeys: Self.keySet)
+                if v?.isSymbolicLink == true { continue }
+                let size = Int64(v?.totalFileAllocatedSize ?? v?.fileAllocatedSize ?? 0)
+                out.append(Entry(url: u, isDir: v?.isDirectory == true, size: size,
+                                 mod: v?.contentModificationDate))
+            }
+            return out
         }
-        return out
     }
 }
 
@@ -206,7 +245,7 @@ enum SunburstLayout {
                 }
                 out.append(Segment(node: c, level: level, a0: a, a1: a + span, hue: h,
                                    cats: totals, dominant: best))
-                let childInApp = inApp || (c.isDir && c.url.pathExtension.lowercased() == "app")
+                let childInApp = inApp || (c.isDir && c.isAppBundle)
                 walk(c, level + 1, a, a + span, h, childInApp)
             }
         }
@@ -293,7 +332,7 @@ final class ViewModel: ObservableObject {
     @Published var extSmallBytes: Int64 = 0     // 被合并的小文件总大小
     @Published var extExact = false             // true = 来自扫描时记录的精确总表(含所有小文件)
     /// 环形图高亮用:每个节点子树里属于所选扩展名的字节数(随所选扩展名 / 当前文件夹刷新)
-    var extHighlight: [UUID: Int64] = [:]
+    var extHighlight: [ObjectIdentifier: Int64] = [:]
     var extHighlightColor: Color = .accentColor
     @Published var topFiles: [Node] = []        // “按类型”模式下,所选类型里最大的文件
     @Published var hogs: [HogItem] = []         // “占用大户”列表
@@ -367,7 +406,7 @@ final class ViewModel: ObservableObject {
         scanning = true
         scannedBytes = 0
 
-        timer = Timer.scheduledTimer(withTimeInterval: 0.2, repeats: true) { [weak self, weak s] _ in
+        timer = Timer.scheduledTimer(withTimeInterval: 0.25, repeats: true) { [weak self, weak s] _ in
             guard let s else { return }
             let v = s.scannedBytes
             let p = s.currentPath
@@ -376,6 +415,7 @@ final class ViewModel: ObservableObject {
                 self?.scanningPath = p
             }
         }
+        timer?.tolerance = 0.1
 
         Task.detached(priority: .userInitiated) { [weak self] in
             let r = s.scan(url)
@@ -495,11 +535,11 @@ final class ViewModel: ObservableObject {
         func walk(_ n: Node, inApp: Bool) {
             for c in n.children where !c.isAggregate {
                 if c.isDir {
-                    walk(c, inApp: inApp || c.url.pathExtension.lowercased() == "app")
+                    walk(c, inApp: inApp || c.isAppBundle)
                 } else if let cat {
-                    if Category.of(c.url, inApp: inApp) == cat { out.append(c) }
+                    if Category.of(ext: c.ext, inApp: inApp) == cat { out.append(c) }
                 } else if let ext {
-                    if extKey(c.url) == ext { out.append(c) }
+                    if c.ext == ext { out.append(c) }
                 }
             }
         }

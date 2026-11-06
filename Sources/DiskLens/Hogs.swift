@@ -172,9 +172,14 @@ enum HogScanner {
             at: url, includingPropertiesForKeys: keys, options: [], errorHandler: { _, _ in true }
         ) else { return 0 }
         var total: Int64 = 0
-        for case let u as URL in en {
-            guard let v = try? u.resourceValues(forKeys: Set(keys)), v.isRegularFile == true else { continue }
-            total += Int64(v.totalFileAllocatedSize ?? 0)
+        let keySet = Set(keys)
+        var finished = false
+        while !finished {
+            autoreleasepool {
+                guard let u = en.nextObject() as? URL else { finished = true; return }
+                guard let v = try? u.resourceValues(forKeys: keySet), v.isRegularFile == true else { return }
+                total += Int64(v.totalFileAllocatedSize ?? 0)
+            }
         }
         return total
     }
