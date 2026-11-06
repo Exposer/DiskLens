@@ -385,8 +385,8 @@ struct TreeListView: View {
 
 /// 动画状态(引用类型,在每一帧里更新):盘片转角、磁头位置、每个扇区最近一次被读到的时间
 final class DiskHeadState {
-    static let tracks = 16
-    static func sectors(_ t: Int) -> Int { 14 + 3 * t }       // 外圈扇区更多,每个扇区长度大致相同
+    static let tracks = 12
+    static func sectors(_ t: Int) -> Int { 16 + 4 * t }       // 外圈扇区更多,每个扇区长度大致相同
 
     var last: Double = 0
     var rot: Double = 0                    // 盘片转过的角度
@@ -513,7 +513,10 @@ struct DiskReadAnimation: View {
                 let age = now - state.readAt[t][s]
                 if age > 1e6 { continue }                                   // 还没读过
                 let flash = max(0, 1 - age / 0.35)                           // 刚读到:很亮
-                let alpha = max(0.42, 1 - max(0, age - 0.35) / 4.5)           // 然后沉淀到“已读”
+                // 读过的痕迹像彗星尾巴一样慢慢淡出,几秒后完全消失:盘片大部分时间保持干净,
+                // 一眼就能看出磁头刚读过哪里,而不是被一整面“已读”的砖墙淹没
+                let alpha = age < 0.35 ? 1.0 : 0.04 + 0.72 * exp(-(age - 0.35) / 1.8)
+                if alpha < 0.06 { continue }
                 let a0 = Double(s) * width + state.rot + width * 0.08
                 let arc = diskArc(center: center, radius: r, from: a0, to: a0 + width * 0.84)
                 if flash > 0.02 {
