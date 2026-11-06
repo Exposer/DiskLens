@@ -26,6 +26,10 @@ struct ContentView: View {
                 cacheBanner(d)
                 Divider()
             }
+            if vm.scanStopped && !vm.scanning {
+                stoppedBanner
+                Divider()
+            }
             Group {
                 if let cur = vm.current {
                     HSplitView {
@@ -120,6 +124,16 @@ struct ContentView: View {
             }
             .disabled(vm.scanning)
 
+            if vm.scanning {
+                Button(role: .destructive) {
+                    vm.stopScan()
+                } label: {
+                    Label(vm.scanStopped ? tr("正在停止…", "Stopping…") : tr("停止扫描", "Stop Scan"),
+                          systemImage: "stop.fill")
+                }
+                .disabled(vm.scanStopped)
+            }
+
             Divider().frame(height: 16)
 
             // 面包屑
@@ -155,6 +169,22 @@ struct ContentView: View {
         .padding(.horizontal, 12)
         .padding(.vertical, 6)
         .background(appAccent.opacity(0.14))
+    }
+
+    private var stoppedBanner: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .foregroundStyle(.orange)
+            Text(tr("扫描已停止,当前显示的是不完整的结果,各文件夹的大小会偏小,也不会保存。",
+                    "Scan stopped. The results are incomplete, folder sizes are underestimated, and they won't be saved."))
+                .font(.callout)
+                .lineLimit(1)
+            Spacer()
+            Button(tr("重新扫描", "Rescan")) { vm.scan(vm.target) }
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 6)
+        .background(Color.orange.opacity(0.14))
     }
 
     private var statusBar: some View {
@@ -288,6 +318,15 @@ struct ScanningView: View {
                 .truncationMode(.middle)
                 .frame(maxWidth: 520)
                 .padding(.horizontal)
+
+            Button {
+                vm.stopScan()
+            } label: {
+                Label(vm.scanStopped ? tr("正在停止…", "Stopping…") : tr("停止扫描", "Stop Scan"),
+                      systemImage: "stop.circle")
+            }
+            .controlSize(.large)
+            .disabled(vm.scanStopped)
         }
         .padding()
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -354,6 +393,8 @@ struct FileListView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .padding(6)
+            } else if vm.viewMode == .hogs {
+                HogListView(vm: vm)
             } else {
                 CategoryListView(vm: vm, node: node)
             }

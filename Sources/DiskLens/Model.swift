@@ -51,6 +51,8 @@ final class DiskScanner: @unchecked Sendable {
     var currentPath: String { lock.lock(); defer { lock.unlock() }; return path }
     func cancel() { lock.lock(); cancelled = true; lock.unlock() }
     private var isCancelled: Bool { lock.lock(); defer { lock.unlock() }; return cancelled }
+    /// 扫描是否被中途取消(此时得到的树是不完整的)
+    var wasCancelled: Bool { isCancelled }
     private func add(_ n: Int64) { lock.lock(); bytes += n; lock.unlock() }
 
     func scan(_ url: URL) -> Node {
@@ -106,6 +108,7 @@ final class DiskScanner: @unchecked Sendable {
         var kids: [Node] = []
         var fileBytes: Int64 = 0
         for e in list(url) {
+            if isCancelled { break }
             if e.isDir {
                 let c = build(e.url, isDir: true, size: 0, inApp: inApp)
                 if c.cats.count == Category.count {
@@ -239,9 +242,17 @@ struct RingGeometry {
 final class ViewModel: ObservableObject {
     @Published var root: Node?
     @Published var current: Node? { didSet { rebuild(); startReveal(); refreshTopFiles() } }
-    @Published var viewMode: ViewMode = .folders { didSet { refreshTopFiles() } }
+    @Published var viewMode: ViewMode = .folders {
+        didSet {
+            refreshTopFiles()
+            if viewMode == .hogs && hogs.isEmpty && !hogsLoading { refreshHogs() }
+        }
+    }
     @Published var selectedCategory: Category? { didSet { refreshTopFiles() } }
     @Published var topFiles: [Node] = []        // “按类型”模式下,所选类型里最大的文件
+    @Published var hogs: [HogItem] = []         // “占用大户”列表
+    @Published var hogsLoading = false
+    @Published var scanStopped = false          // 扫描被手动停止,当前结果不完整
     @Published var hovered: Node?
     @Published var scanning = false
     @Published var scannedBytes: Int64 = 0
@@ -290,7 +301,7 @@ final class ViewModel: ObservableObject {
         target = url
         root = nil; current = nil; hovered = nil
         collected = []; scanningPath = ""; selectedCategory = nil
-        isCached = false; scanDate = nil
+        isCached = false; scanDate = nil; scanStopped = false
         UserDefaults.standard.set(url.path, forKey: "lastTarget")
         scanning = true
         scannedBytes = 0
@@ -317,11 +328,12 @@ final class ViewModel: ObservableObject {
                 self.current = r
                 self.scanDate = date
                 self.isCached = false
+                self.scanStopped = s.wasCancelled
                 self.scanning = false
                 return true
             }
             // 被取消的扫描结果不完整,不保存
-            if accepted { try? ScanStore.write(snap) }
+            if accepted && !s.wasCancelled { try? ScanStore.write(snap) }
         }
     }
 
@@ -348,9 +360,16 @@ final class ViewModel: ObservableObject {
         }
     }
 
+    /// 停止当前扫描:已扫到的部分会保留并显示,但标记为不完整,也不会保存为缓存
+    func stopScan() {
+        guard scanning, let s = scanner else { return }
+        s.cancel()
+        scanStopped = true
+    }
+
     /// 清理(移到废纸篓)之后,把更新后的结果重新存盘,日期保持为原扫描时间
     private func saveCache() {
-        guard let r = root, !scanning else { return }
+        guard let r = root, !scanning, !scanStopped else { return }
         let snap = ScanSnapshot(path: r.url.path, date: scanDate ?? Date(), root: ScanStore.dto(r))
         Task.detached(priority: .utility) { try? ScanStore.write(snap) }
     }
@@ -374,18 +393,9 @@ final class ViewModel: ObservableObject {
         for n in nodes {
             do {
                 try FileManager.default.trashItem(at: n.url, resultingItemURL: nil)
-                let s = n.size
-                let t = n.categoryTotals(inApp: n.parent?.isInsideApp ?? false)
-                var p = n.parent
-                n.parent?.children.removeAll { $0 === n }
-                while let q = p {
-                    q.size -= s
-                    if q.cats.count == Category.count {
-                        for i in 0..<Category.count { q.cats[i] = max(0, q.cats[i] - t[i]) }
-                    }
-                    p = q.parent
-                }
-                collected.removeAll { $0 === n }
+                // 占用大户这类独立节点不在扫描树里:按路径找到树里对应的节点再摘除
+                if let target = n.parent == nil ? findInTree(n.url) : n { detach(target) }
+                collected.removeAll { urlIsInside($0.url, of: n.url) }
             } catch {
                 failures.append("\(n.name): \(error.localizedDescription)")
             }
@@ -394,6 +404,7 @@ final class ViewModel: ObservableObject {
         rebuild()
         refreshTopFiles()
         saveCache()
+        if !hogs.isEmpty { refreshHogs() }
         objectWillChange.send()
         if !failures.isEmpty { errorMessage = failures.joined(separator: "\n") }
     }
@@ -437,21 +448,47 @@ final class ViewModel: ObservableObject {
 
     var collectedSize: Int64 { collected.reduce(0) { $0 + $1.size } }
 
-    func isCollected(_ n: Node) -> Bool { collected.contains { $0 === n } }
-
-    private func isAncestor(_ a: Node, of b: Node) -> Bool {
-        var p = b.parent
-        while let q = p { if q === a { return true }; p = q.parent }
-        return false
+    /// 它自己,或它的某个上级目录,已经在收集器里
+    func isCollected(_ n: Node) -> Bool {
+        collected.contains { urlIsInside(n.url, of: $0.url) }
     }
 
     func collect(_ n: Node) {
-        guard !n.isAggregate, !isCollected(n) else { return }
-        // 已收集了它的上级目录:不重复计算
-        if collected.contains(where: { isAncestor($0, of: n) }) { return }
+        guard !n.isAggregate else { return }
+        // 已收集了它的上级目录(或它本身):不重复计算
+        if isCollected(n) { return }
         // 收集了上级目录:把已收集的子项合并掉
-        collected.removeAll { isAncestor(n, of: $0) }
+        collected.removeAll { urlIsInside($0.url, of: n.url) }
         collected.append(n)
+    }
+
+    // MARK: 从扫描树里摘除节点
+
+    private func detach(_ n: Node) {
+        let s = n.size
+        let t = n.categoryTotals(inApp: n.parent?.isInsideApp ?? false)
+        var p = n.parent
+        n.parent?.children.removeAll { $0 === n }
+        while let q = p {
+            q.size -= s
+            if q.cats.count == Category.count {
+                for i in 0..<Category.count { q.cats[i] = max(0, q.cats[i] - t[i]) }
+            }
+            p = q.parent
+        }
+    }
+
+    private func findInTree(_ url: URL) -> Node? {
+        guard let r = root else { return nil }
+        let rp = r.url.standardizedFileURL.pathComponents
+        let up = url.standardizedFileURL.pathComponents
+        guard up.count > rp.count, Array(up.prefix(rp.count)) == rp else { return nil }
+        var cur = r
+        for comp in up[rp.count...] {
+            guard let next = cur.children.first(where: { !$0.isAggregate && $0.name == comp }) else { return nil }
+            cur = next
+        }
+        return cur
     }
 
     func uncollect(_ n: Node) { collected.removeAll { $0 === n } }

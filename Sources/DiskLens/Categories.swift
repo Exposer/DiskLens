@@ -1,12 +1,13 @@
 import SwiftUI
 
 enum ViewMode: CaseIterable, Hashable {
-    case folders, types
+    case folders, types, hogs
 
     var title: String {
         switch self {
         case .folders: return tr("文件夹", "Folders")
         case .types: return tr("文件类型", "File Types")
+        case .hogs: return tr("占用大户", "Space Hogs")
         }
     }
 }

@@ -15,6 +15,8 @@ A native macOS disk-usage analyzer built with SwiftUI. See at a glance what is e
 - **File type breakdown** – switch the side panel to *File Types* to see video, audio, images, documents, archives/installers/disk images, apps, code and other, with a stacked overview bar. Click a type to list its largest files.
 - **Color by type** – in *File Types* mode the chart is colored by dominant file type; pick a type in the legend to highlight where it lives and fade out everything else.
 - **Purgeable space** – the bottom bar splits the startup volume into *used*, *purgeable* and *free*, so you can tell what macOS can reclaim by itself.
+- **Space hogs** – a dedicated tab that measures well-known space eaters (Xcode DerivedData / device support / archives, Homebrew, npm, Yarn, pnpm, CocoaPods, Gradle, pip, Cargo, Docker, iOS backups, caches, logs, Trash…), tells you which are safe to clean, shows the recommended cleanup command where one exists, and can add all the safe ones to the Collector in one click.
+- **Stop scan** – cancel a running scan at any time; what was scanned so far is shown but flagged as incomplete and is never saved.
 - **Saved scan results** – each scan is saved to `~/Library/Application Support/DiskLens/`, and the app reopens instantly with the last result (with a banner showing when it was scanned and a *Rescan* button). Items you move to the Trash are removed from the saved result too.
 - **English / 中文** – switch the interface language from the toolbar (🌐); your choice is remembered, and the default follows the system language.
 - **Color themes inspired by Apple Books** – *Original* (follows the system), *Paper*, *Calm*, *Quiet* and *Night*. Backgrounds, accent color and chart colors all adapt; pick one from the palette menu in the toolbar.
@@ -97,6 +99,8 @@ make_app.sh            Builds DiskLens.app
 - **按文件类型汇总**:把侧边栏切到「文件类型」,可以看到视频、音频、图片、文档、压缩包/安装包/磁盘映像、应用程序、代码和其他的占比,并带一条堆叠总览条。点某个类型,列出该类型里最大的文件。
 - **按类型着色**:在「文件类型」模式下,环形图按主要文件类型着色;在图例里选一个类型,就能高亮它分布在哪里,其余部分变淡。
 - **可清除空间**:底部容量条把启动磁盘分成「已用」「可清除」「空闲」三段,让你知道哪些空间 macOS 会自动回收。
+- **占用大户**:专门的一页,统计 Xcode(DerivedData / 设备支持 / 归档)、Homebrew、npm、Yarn、pnpm、CocoaPods、Gradle、pip、Cargo、Docker、iOS 备份、缓存、日志、废纸篓等常见占空间的位置,标明哪些可以放心清理,有推荐命令的会一并给出,还能一键把所有「可清理」项加入收集器。
+- **停止扫描**:扫描过程中随时可以停止,已扫到的部分会显示出来,但会标明结果不完整,也不会保存。
 - **保存扫描结果**:每次扫描后的结果会保存到 `~/Library/Application Support/DiskLens/`,下次打开 App 直接载入上次的结果,顶部有横幅提示扫描时间和「重新扫描」按钮。移到废纸篓的项目也会同步从已保存的结果里去掉。
 - **中英文切换**:在工具栏的 🌐 菜单里切换界面语言,选择会被记住,默认跟随系统语言。
 - **参考 Apple Books 的配色方案**:「原始」(跟随系统)、「纸张」、「柔和」、「安静」、「夜间」。背景、强调色和图表颜色都会随之变化,在工具栏的调色板菜单里选择。
