@@ -128,13 +128,7 @@ struct ContentView: View {
 
     private var statusBar: some View {
         HStack(spacing: 12) {
-            if let c = Self.capacity() {
-                let used = c.total - c.free
-                ProgressView(value: Double(used), total: Double(max(c.total, 1)))
-                    .frame(width: 160)
-                Text("已用 \(formatSize(used)) / 共 \(formatSize(c.total)) · 可用 \(formatSize(c.free))")
-                    .font(.caption.monospacedDigit())
-            }
+            CapacityBar()
             Spacer()
             Button("部分目录打不开?授予「完全磁盘访问权限」") {
                 if let u = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles") {
@@ -154,14 +148,6 @@ struct ContentView: View {
         p.canChooseFiles = false
         p.allowsMultipleSelection = false
         if p.runModal() == .OK, let u = p.url { vm.scan(u) }
-    }
-
-    static func capacity() -> (total: Int64, free: Int64)? {
-        let u = URL(fileURLWithPath: "/")
-        guard let v = try? u.resourceValues(forKeys: [.volumeTotalCapacityKey, .volumeAvailableCapacityForImportantUsageKey]),
-              let t = v.volumeTotalCapacity,
-              let f = v.volumeAvailableCapacityForImportantUsage else { return nil }
-        return (Int64(t), f)
     }
 }
 
