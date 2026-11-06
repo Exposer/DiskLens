@@ -15,6 +15,7 @@ A native macOS disk-usage analyzer built with SwiftUI. See at a glance what is e
 - **File type breakdown** – switch the side panel to *File Types* to see video, audio, images, documents, archives/installers/disk images, apps, code and other, with a stacked overview bar. Click a type to list its largest files.
 - **Color by type** – in *File Types* mode the chart is colored by dominant file type; pick a type in the legend to highlight where it lives and fade out everything else.
 - **Purgeable space** – the bottom bar splits the startup volume into *used*, *purgeable* and *free*, so you can tell what macOS can reclaim by itself.
+- **Saved scan results** – each scan is saved to `~/Library/Application Support/DiskLens/`, and the app reopens instantly with the last result (with a banner showing when it was scanned and a *Rescan* button). Items you move to the Trash are removed from the saved result too.
 - **Safe deletion** – items are moved to the Trash (never permanently deleted) after a confirmation, so they can be restored.
 - **Private** – everything runs locally. No network access, no telemetry.
 
@@ -94,6 +95,7 @@ make_app.sh            Builds DiskLens.app
 - **按文件类型汇总**:把侧边栏切到「文件类型」,可以看到视频、音频、图片、文档、压缩包/安装包/磁盘映像、应用程序、代码和其他的占比,并带一条堆叠总览条。点某个类型,列出该类型里最大的文件。
 - **按类型着色**:在「文件类型」模式下,环形图按主要文件类型着色;在图例里选一个类型,就能高亮它分布在哪里,其余部分变淡。
 - **可清除空间**:底部容量条把启动磁盘分成「已用」「可清除」「空闲」三段,让你知道哪些空间 macOS 会自动回收。
+- **保存扫描结果**:每次扫描后的结果会保存到 `~/Library/Application Support/DiskLens/`,下次打开 App 直接载入上次的结果,顶部有横幅提示扫描时间和「重新扫描」按钮。移到废纸篓的项目也会同步从已保存的结果里去掉。
 - **安全删除**:确认后只会移到废纸篓,不会永久删除,可以随时恢复。
 - **隐私**:全部在本地运行,不联网,没有任何数据上报。
 

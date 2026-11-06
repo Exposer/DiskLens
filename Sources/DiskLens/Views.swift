@@ -19,6 +19,10 @@ struct ContentView: View {
         VStack(spacing: 0) {
             toolbar
             Divider()
+            if vm.isCached, let d = vm.scanDate {
+                cacheBanner(d)
+                Divider()
+            }
             Group {
                 if let cur = vm.current {
                     HSplitView {
@@ -63,7 +67,7 @@ struct ContentView: View {
                 .allowsHitTesting(false)
             }
         }
-        .onAppear { if vm.root == nil && !vm.scanning { vm.scan(vm.target) } }
+        .onAppear { vm.loadCachedOrScan() }
         .alert("移到废纸篓?", isPresented: Binding(
             get: { vm.pendingTrash != nil },
             set: { if !$0 { vm.pendingTrash = nil } })
@@ -124,6 +128,20 @@ struct ContentView: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
+    }
+
+    private func cacheBanner(_ date: Date) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: "clock.arrow.circlepath")
+            Text("显示的是 \(date.formatted(date: .abbreviated, time: .shortened))(\(RelativeDateTimeFormatter().localizedString(for: date, relativeTo: Date())))保存的扫描结果,之后磁盘可能已有变化。")
+                .font(.callout)
+                .lineLimit(1)
+            Spacer()
+            Button("重新扫描") { vm.scan(vm.target) }
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 6)
+        .background(Color.accentColor.opacity(0.12))
     }
 
     private var statusBar: some View {

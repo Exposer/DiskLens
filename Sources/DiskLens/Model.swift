@@ -245,7 +245,15 @@ final class ViewModel: ObservableObject {
     @Published var hovered: Node?
     @Published var scanning = false
     @Published var scannedBytes: Int64 = 0
-    @Published var target = FileManager.default.homeDirectoryForCurrentUser
+    @Published var target: URL = {
+        if let p = UserDefaults.standard.string(forKey: "lastTarget"),
+           FileManager.default.fileExists(atPath: p) {
+            return URL(fileURLWithPath: p)
+        }
+        return FileManager.default.homeDirectoryForCurrentUser
+    }()
+    @Published var scanDate: Date?              // 当前显示的结果是什么时候扫描的
+    @Published var isCached = false             // true = 来自上次保存的结果,不是刚扫描的
     @Published var pendingTrash: Node?
     @Published var errorMessage: String?
     @Published var scanningPath = ""
@@ -282,6 +290,8 @@ final class ViewModel: ObservableObject {
         target = url
         root = nil; current = nil; hovered = nil
         collected = []; scanningPath = ""; selectedCategory = nil
+        isCached = false; scanDate = nil
+        UserDefaults.standard.set(url.path, forKey: "lastTarget")
         scanning = true
         scannedBytes = 0
 
@@ -297,14 +307,52 @@ final class ViewModel: ObservableObject {
 
         Task.detached(priority: .userInitiated) { [weak self] in
             let r = s.scan(url)
-            await MainActor.run {
-                guard let self, self.scanner === s else { return }
+            let date = Date()
+            // 先在后台生成可序列化的快照,界面更新后再写盘
+            let snap = ScanSnapshot(path: url.path, date: date, root: ScanStore.dto(r))
+            let accepted = await MainActor.run { () -> Bool in
+                guard let self, self.scanner === s else { return false }
                 self.timer?.invalidate()
                 self.root = r
                 self.current = r
+                self.scanDate = date
+                self.isCached = false
                 self.scanning = false
+                return true
+            }
+            // 被取消的扫描结果不完整,不保存
+            if accepted { try? ScanStore.write(snap) }
+        }
+    }
+
+    /// 启动时调用:有上次保存的结果就直接载入,没有再扫描
+    func loadCachedOrScan() {
+        guard root == nil, !scanning, scanner == nil else { return }
+        let url = target
+        scanning = true
+        scanningPath = "正在读取上次保存的扫描结果…"
+        Task.detached(priority: .userInitiated) { [weak self] in
+            let loaded = ScanStore.load(path: url.path)
+            await MainActor.run {
+                guard let self, self.root == nil, self.scanner == nil else { return }
+                self.scanning = false
+                if let loaded {
+                    self.root = loaded.root
+                    self.current = loaded.root
+                    self.scanDate = loaded.date
+                    self.isCached = true
+                } else {
+                    self.scan(url)
+                }
             }
         }
+    }
+
+    /// 清理(移到废纸篓)之后,把更新后的结果重新存盘,日期保持为原扫描时间
+    private func saveCache() {
+        guard let r = root, !scanning else { return }
+        let snap = ScanSnapshot(path: r.url.path, date: scanDate ?? Date(), root: ScanStore.dto(r))
+        Task.detached(priority: .utility) { try? ScanStore.write(snap) }
     }
 
     func open(_ n: Node) {
@@ -345,6 +393,7 @@ final class ViewModel: ObservableObject {
         hovered = nil
         rebuild()
         refreshTopFiles()
+        saveCache()
         objectWillChange.send()
         if !failures.isEmpty { errorMessage = failures.joined(separator: "\n") }
     }
