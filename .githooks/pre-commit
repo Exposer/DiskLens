@@ -1,0 +1,15 @@
+#!/bin/sh
+# Block commits that change app code/resources without also updating CHANGELOG.md
+# 修改了应用代码或资源,却没有同时更新 CHANGELOG.md 时,阻止提交。
+# Enable once per clone / 每个克隆只需启用一次:  git config core.hooksPath .githooks
+
+staged=$(git diff --cached --name-only)
+
+if echo "$staged" | grep -qE '^(Sources/|Resources/|Package\.swift$|make_app\.sh$)'; then
+  if ! echo "$staged" | grep -qx 'CHANGELOG.md'; then
+    echo "CHANGELOG.md was not updated. / 没有更新 CHANGELOG.md。" >&2
+    echo "Add an entry under [Unreleased] (English / 中文) and stage it. / 请在 [Unreleased] 下写一条中英文记录并加入暂存区。" >&2
+    exit 1
+  fi
+fi
+exit 0
