@@ -40,7 +40,16 @@ cat > "$APP/Contents/Info.plist" <<EOF
 </dict></plist>
 EOF
 xattr -cr "$APP"
-codesign --force --sign - "$APP"
+# 签名:默认是临时(ad-hoc)签名,但这样每次打包的“指定要求”都是这一份二进制的哈希,
+# 系统会把新包当成另一个程序,之前授予的「完全磁盘访问权限」就失效了(扫描会少算受保护的目录)。
+# 想让权限只授予一次:用固定证书签名,例如
+#   DISKLENS_SIGN_IDENTITY="Apple Development: 你的名字 (TEAMID)" ./make_app.sh
+# 可用的证书见 `security find-identity -v -p codesigning`
+SIGN_ID="${DISKLENS_SIGN_IDENTITY:--}"
+codesign --force --sign "$SIGN_ID" "$APP"
+if [ "$SIGN_ID" = "-" ]; then
+  echo "提示: 使用的是临时签名,每次重新打包后都需要重新授予「完全磁盘访问权限」。设置 DISKLENS_SIGN_IDENTITY 可避免。"
+fi
 ditto --norsrc --noextattr "$APP" "$OUT"
 rm -rf "$STAGE"
 echo "完成: $(pwd)/$OUT  (版本 1.0, build $BUILD)"

@@ -428,12 +428,18 @@ struct DiffSheet: View {
 
 struct CompareButton: View {
     @ObservedObject var vm: ViewModel
+    /// 窗口很窄时只显示图标
+    var iconOnly = false
 
     var body: some View {
         Button {
             vm.showDiff = true
         } label: {
-            Label(tr("对比", "Compare"), systemImage: "plusminus.circle")
+            if iconOnly {
+                Image(systemName: "plusminus.circle")
+            } else {
+                Label(tr("对比", "Compare"), systemImage: "plusminus.circle").lineLimit(1).fixedSize()
+            }
         }
         .disabled(vm.root == nil || vm.scanning)
         .help(tr("和之前的扫描对比,看磁盘是被什么撑大的", "Compare with an earlier scan to see what grew"))

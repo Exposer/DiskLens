@@ -123,16 +123,49 @@ struct ContentView: View {
     }
 
     private var toolbar: some View {
+        // 窗口变窄时按钮文字会被截断:依次换成更紧凑的版本(扫描按钮只留图标 → 连“对比”也只留图标),
+        // 鼠标悬停时仍有文字提示
+        ViewThatFits(in: .horizontal) {
+            toolbarRow(iconOnlyScan: false, iconOnlyCompare: false)
+            toolbarRow(iconOnlyScan: true, iconOnlyCompare: false)
+            toolbarRow(iconOnlyScan: true, iconOnlyCompare: true)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+    }
+
+    private func toolButton(_ title: String, _ icon: String, iconOnly: Bool,
+                            action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            if iconOnly {
+                Image(systemName: icon)
+            } else {
+                Text(title).lineLimit(1).fixedSize()
+            }
+        }
+        .help(title)
+    }
+
+    private func toolbarRow(iconOnlyScan: Bool, iconOnlyCompare: Bool) -> some View {
         HStack(spacing: 10) {
-            Button(tr("选择文件夹…", "Choose Folder…")) { chooseFolder() }
-            Button(tr("扫描整个磁盘", "Scan Whole Disk")) { vm.scan(URL(fileURLWithPath: "/")) }
-            Button(tr("个人文件夹", "Home Folder")) { vm.scan(FileManager.default.homeDirectoryForCurrentUser) }
+            toolButton(tr("选择文件夹…", "Choose Folder…"), "folder", iconOnly: iconOnlyScan) { chooseFolder() }
+            toolButton(tr("扫描整个磁盘", "Scan Whole Disk"), "internaldrive", iconOnly: iconOnlyScan) {
+                vm.scan(URL(fileURLWithPath: "/"))
+            }
+            toolButton(tr("个人文件夹", "Home Folder"), "house", iconOnly: iconOnlyScan) {
+                vm.scan(FileManager.default.homeDirectoryForCurrentUser)
+            }
             Button {
                 vm.scan(vm.target)
             } label: {
-                Label(tr("重新扫描", "Rescan"), systemImage: "arrow.clockwise")
+                if iconOnlyScan {
+                    Image(systemName: "arrow.clockwise")
+                } else {
+                    Label(tr("重新扫描", "Rescan"), systemImage: "arrow.clockwise").lineLimit(1).fixedSize()
+                }
             }
             .disabled(vm.scanning)
+            .help(tr("重新扫描", "Rescan"))
 
             if vm.scanning {
                 Button(role: .destructive) {
@@ -140,13 +173,15 @@ struct ContentView: View {
                 } label: {
                     Label(vm.scanStopped ? tr("正在停止…", "Stopping…") : tr("停止扫描", "Stop Scan"),
                           systemImage: "stop.fill")
+                        .lineLimit(1)
+                        .fixedSize()
                 }
                 .disabled(vm.scanStopped)
             }
 
             Divider().frame(height: 16)
 
-            // 面包屑
+            // 面包屑:空间不够时自己滚动,不挤占按钮
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 4) {
                     ForEach(vm.trail) { n in
@@ -158,14 +193,13 @@ struct ContentView: View {
                     }
                 }
             }
+            .frame(minWidth: 40, idealWidth: 40, maxWidth: .infinity)
 
             Divider().frame(height: 16)
-            CompareButton(vm: vm)
+            CompareButton(vm: vm, iconOnly: iconOnlyCompare)
             ExportMenu(vm: vm)
             SettingsMenus(onChange: onPrefsChange)
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
     }
 
     private func cacheBanner(_ date: Date) -> some View {
