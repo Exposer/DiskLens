@@ -8,6 +8,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). `0.1.0`–`0.23.
 
 ## [Unreleased]
 
+### Added / 新增
+- `docs/release-notes-v1.0.md`: the bilingual release notes for 1.0, so the GitHub release can be created with `gh release create v1.0 --notes-file docs/release-notes-v1.0.md`. / 新增 `docs/release-notes-v1.0.md`:1.0 的中英文发布说明,可以用 `gh release create v1.0 --notes-file docs/release-notes-v1.0.md` 创建 GitHub Release。
+
 ## [1.0] - 2026-11-06
 
 ### Added / 新增
