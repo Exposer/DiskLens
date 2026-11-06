@@ -75,9 +75,25 @@ final class DiskScanner: @unchecked Sendable {
     ]
     private static let keys: [URLResourceKey] = [
         .isDirectoryKey, .isSymbolicLinkKey, .totalFileAllocatedSizeKey, .fileAllocatedSizeKey,
-        .contentModificationDateKey
+        .contentModificationDateKey, .volumeIdentifierKey
     ]
     private static let keySet = Set(keys)
+
+    /// 允许进入的卷。扫描不跨越文件系统边界(类似 `du -x`):挂载进目录树的磁盘映像
+    /// (Xcode 模拟器运行时、系统资源镜像)、外接盘、网络卷、自动挂载点都不会被算进去,
+    /// 否则同一份数据会被重复统计,总数甚至超过磁盘本身的容量。
+    /// 从 "/" 扫描时,个人数据所在的 Data 卷(通过 firmlink 出现在 /Users、/Library 等位置)也允许进入。
+    private var allowedVolumes: [AnyObject] = []
+
+    private func volumeID(_ path: String) -> AnyObject? {
+        (try? URL(fileURLWithPath: path).resourceValues(forKeys: [.volumeIdentifierKey]))?
+            .volumeIdentifier as AnyObject?
+    }
+
+    private func isAllowed(_ id: AnyObject?) -> Bool {
+        guard let id else { return true }          // 读不到就不拦,避免误伤
+        return allowedVolumes.contains { $0.isEqual(id) }
+    }
 
     private var path = ""
     private var extTotals: [String: ExtTotal] = [:]
@@ -103,6 +119,10 @@ final class DiskScanner: @unchecked Sendable {
     private func add(_ n: Int64) { lock.lock(); bytes += n; lock.unlock() }
 
     func scan(_ url: URL) -> Node {
+        allowedVolumes = [volumeID(url.path)].compactMap { $0 }
+        if url.standardizedFileURL.path == "/", let data = volumeID("/System/Volumes/Data") {
+            allowedVolumes.append(data)
+        }
         let root = Node(url: url, isDir: true)
         let entries = list(url)
         var results = [Node?](repeating: nil, count: entries.count)
@@ -203,6 +223,7 @@ final class DiskScanner: @unchecked Sendable {
                 if Self.skipPaths.contains(u.path) { continue }
                 let v = try? u.resourceValues(forKeys: Self.keySet)
                 if v?.isSymbolicLink == true { continue }
+                if v?.isDirectory == true, !isAllowed(v?.volumeIdentifier as AnyObject?) { continue }
                 let size = Int64(v?.totalFileAllocatedSize ?? v?.fileAllocatedSize ?? 0)
                 out.append(Entry(url: u, isDir: v?.isDirectory == true, size: size,
                                  mod: v?.contentModificationDate))
@@ -379,11 +400,14 @@ final class ViewModel: ObservableObject {
     private var revealToken = 0
 
     private(set) var segments: [Segment] = []
+    /// 每次重算 segments 加一,环形图据此判断缓存的扇形路径是否还有效
+    private(set) var segmentsVersion = 0
     private var scanner: DiskScanner?
     private var timer: Timer?
 
     private func rebuild() {
         segments = current.map { SunburstLayout.segments(for: $0) } ?? []
+        segmentsVersion += 1
     }
 
     var trail: [Node] {

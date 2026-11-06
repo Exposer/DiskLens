@@ -661,10 +661,28 @@ struct CollectorView: View {
 
 // MARK: - 右侧环形图
 
+/// 缓存每个扇形的完整路径。路径只取决于扇形本身和视图大小,和悬停无关:
+/// 鼠标在环形图上移动时,每次重绘只需要换颜色,不用重新生成成千上万段折线。
+final class SegmentPathCache {
+    private var version = -1
+    private var size = CGSize.zero
+    private var paths: [Path] = []
+
+    func paths(for segments: [Segment], version v: Int, size s: CGSize, geometry g: RingGeometry) -> [Path] {
+        if v != version || s != size || paths.count != segments.count {
+            paths = segments.map { g.path(for: $0) }
+            version = v
+            size = s
+        }
+        return paths
+    }
+}
+
 struct SunburstView: View {
     @ObservedObject var vm: ViewModel
     let current: Node
     @State private var dragActive = false
+    @State private var pathCache = SegmentPathCache()
 
     var body: some View {
         GeometryReader { geo in
@@ -673,17 +691,24 @@ struct SunburstView: View {
             ZStack {
                 // 展开动画:扇形按角度从 12 点方向顺时针“扫开”
                 TimelineView(.animation(minimumInterval: nil, paused: !vm.revealing)) { tl in
-                    Canvas { ctx, _ in
+                    Canvas { ctx, canvasSize in
                         let elapsed = tl.date.timeIntervalSince(vm.revealStart)
                         let p = vm.revealing ? min(1, max(0, elapsed / 0.7)) : 1
                         let eased = 1 - pow(1 - p, 3)
                         let limit = eased * 2 * Double.pi
                         let gap = Prefs.theme.bg
-                        for s in vm.segments {
+                        let segs = vm.segments
+                        let cached = pathCache.paths(for: segs, version: vm.segmentsVersion,
+                                                     size: canvasSize, geometry: g)
+                        for (i, s) in segs.enumerated() {
                             if s.a0 >= limit { continue }
-                            var clipped = s
-                            clipped.a1 = min(s.a1, limit)
-                            let path = g.path(for: clipped)
+                            // 展开动画只有正在“扫开”的那几个扇形需要重新生成路径,其余直接用缓存
+                            var path = cached[i]
+                            if s.a1 > limit {
+                                var clipped = s
+                                clipped.a1 = limit
+                                path = g.path(for: clipped)
+                            }
                             let isHover = vm.hovered === s.node
                             let fillColor = segmentColor(s, hovered: isHover)
                             ctx.fill(path, with: .color(fillColor))

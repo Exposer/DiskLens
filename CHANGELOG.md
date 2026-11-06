@@ -15,9 +15,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions `0.1.0`
 - **Build number**: the app version is now shown as `1.0 (build N)` (e.g. in the About panel), where N is the number of commits, so every change gets a new build number automatically. / **Build 号**:应用版本现在显示为 `1.0 (build N)`(如「关于 DiskLens」里),N 为 git 提交数,每次改动提交后自动加 1。
 
 ### Fixed / 修复
+- **Scan totals could far exceed the disk's real usage**: scanning no longer crosses file system boundaries (like `du -x`). Disk images mounted inside the folder tree (Xcode simulator runtimes, system asset images), external and network volumes and automount points are skipped, so the same data is no longer counted twice. Scanning `/` still includes your Data volume. / **扫描总大小可能远超磁盘实际用量**:扫描不再跨越文件系统边界(类似 `du -x`)。挂载进目录树的磁盘映像(Xcode 模拟器运行时、系统资源镜像)、外接盘、网络卷和自动挂载点都会被跳过,同一份数据不再被重复统计;从 `/` 扫描时仍会包含个人数据所在的 Data 卷。
 - Packaging with `make_app.sh` no longer fails at code signing with "detritus not allowed" when the project lives in a Finder/iCloud-synced folder. / 项目放在 Finder / iCloud 同步的文件夹里时,用 `make_app.sh` 打包不再在签名步骤报 "detritus not allowed"。
 
 ### Changed / 变更
+- **Smoother ring chart on hover**: the outline of every ring segment is now computed once per layout and reused, so moving the mouse over the chart only recolors the hovered segment instead of rebuilding thousands of outlines on every move, which lowers CPU use. / **环形图悬停更流畅**:每个扇形的轮廓现在每次布局只计算一次并复用,鼠标在图上移动时只需要给悬停的扇形换颜色,不再每次移动都重新生成成千上万段轮廓,降低 CPU 占用。
 - **Much lower memory while scanning**: small files (under 2 MB, which end up in the "Small items" bucket anyway) no longer get a node of their own during the scan, so scanning a disk with millions of files peaks at a fraction of the memory it used to. Totals, charts and cached results are unchanged. / **扫描时内存占用大幅降低**:小于 2 MB 的小文件(最后本来就合并进「小文件」)在扫描时不再单独建节点,扫描有几百万个文件的磁盘时内存峰值只有原来的一小部分。总大小、图表和缓存结果都不变。
 - **Smaller scan results in memory**: folders and files no longer each keep a full copy of their path or an ID string. / **扫描结果在内存里更小**:每个文件夹和文件不再各自保存一份完整路径和 ID 字符串。
 - Scanning, duplicate search and the Space Hogs measurement now release temporary system objects as they go instead of piling them up until the job ends. / 扫描、查找重复文件和统计占用大户时会边做边释放系统产生的临时对象,不再堆到任务结束才释放。
