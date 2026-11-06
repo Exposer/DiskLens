@@ -76,6 +76,14 @@ final class DiskScanner: @unchecked Sendable {
         // (/.nofollow/Users、/.nofollow/System/Volumes/Data……),不跳过会把整块磁盘重复统计
         "/.nofollow", "/.resolve", "/.vol", "/.file"
     ]
+    /// 云同步目录不算本地占用:iCloud 云盘 / App 容器(Mobile Documents)和各家云盘的文件提供程序目录(CloudStorage,
+    /// 如 Dropbox、OneDrive、Google Drive)。里面没下载的文件本来就不占本地空间,而且遍历它们很慢。
+    /// 只在它们作为子目录出现时跳过;如果你直接选它们作为扫描目标,仍然会扫。
+    private static let cloudPaths: Set<String> = {
+        let lib = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library")
+        return [lib.appendingPathComponent("Mobile Documents").path,
+                lib.appendingPathComponent("CloudStorage").path]
+    }()
     private static let keys: [URLResourceKey] = [
         .isDirectoryKey, .isSymbolicLinkKey, .totalFileAllocatedSizeKey, .fileAllocatedSizeKey,
         .contentModificationDateKey, .volumeIdentifierKey
@@ -223,7 +231,10 @@ final class DiskScanner: @unchecked Sendable {
             var out: [Entry] = []
             out.reserveCapacity(items.count)
             for u in items {
-                if Self.skipPaths.contains(u.path) { continue }
+                // 目录的 path 有时带末尾斜杠(例如 "/.nofollow/"),比较前先去掉,否则跳过列表对不上
+                var p = u.path
+                if p.count > 1, p.hasSuffix("/") { p.removeLast() }
+                if Self.skipPaths.contains(p) || Self.cloudPaths.contains(p) { continue }
                 let v = try? u.resourceValues(forKeys: Self.keySet)
                 if v?.isSymbolicLink == true { continue }
                 if v?.isDirectory == true, !isAllowed(v?.volumeIdentifier as AnyObject?) { continue }
