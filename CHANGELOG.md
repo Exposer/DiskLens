@@ -8,6 +8,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions `0.1.0`
 
 ## [Unreleased]
 
+## [0.19.0] - 2026-11-06
+
+### Added / 新增
+- **After a scan finishes, a banner tells you how much the total changed since the last scan** — e.g. "12.3 GB more than the last scan (3 days ago): 410 GB → 422 GB" (orange when it grew, green when it shrank, grey when practically unchanged). The *See what changed* button opens the Compare window straight away; ✕ dismisses it. It is not shown for stopped (incomplete) scans or when results are loaded from the saved cache. / **扫描完成后,顶部会提示总大小比上次扫描多了 / 少了多少**,例如「比上次扫描(3 天前)多了 12.3 GB(410 GB → 422 GB)」(变大橙色、变小绿色、基本没变灰色)。点「查看差异」直接打开对比窗口,点 ✕ 关闭。手动停止的(不完整)扫描和从缓存载入的结果不会显示这个提示。
+
+### Changed / 变更
+- History snapshot file names now include the total size, so the previous scan's size is read instantly without decoding the whole file. Snapshots saved by the previous version still work (their size is read once the slow way). / 历史快照的文件名里现在带上总大小,取上一次扫描的大小不需要解码整个文件。上一版保存的快照仍然可用(只是第一次需要用慢办法读出大小)。
+
 ## [0.18.0] - 2026-11-06
 
 ### Added / 新增

@@ -51,12 +51,14 @@ enum ScanStore {
     struct HistoryEntry: Identifiable {
         let url: URL
         let date: Date
+        let size: Int64?     // 当时的总大小(写在文件名里,旧版本保存的快照没有)
         var id: URL { url }
     }
 
-    private static func historyFile(_ path: String, date: Date) -> URL {
+    /// 文件名:hist-<路径哈希>-<扫描时间戳>-<总大小>.json
+    private static func historyFile(_ path: String, date: Date, size: Int64) -> URL {
         historyDirectory.appendingPathComponent(
-            "hist-\(hashString(path))-\(Int(date.timeIntervalSince1970)).json")
+            "hist-\(hashString(path))-\(Int(date.timeIntervalSince1970))-\(size).json")
     }
 
     /// 某个目录的历史快照,最新的在前
@@ -66,10 +68,32 @@ enum ScanStore {
             at: historyDirectory, includingPropertiesForKeys: nil)) ?? []
         return files.compactMap { u -> HistoryEntry? in
             let name = u.deletingPathExtension().lastPathComponent
-            guard name.hasPrefix(prefix), let t = TimeInterval(name.dropFirst(prefix.count)) else { return nil }
-            return HistoryEntry(url: u, date: Date(timeIntervalSince1970: t))
+            guard name.hasPrefix(prefix) else { return nil }
+            let rest = name.dropFirst(prefix.count).split(separator: "-")
+            guard let first = rest.first, let t = TimeInterval(first) else { return nil }
+            let size: Int64? = rest.count > 1 ? Int64(rest[1]) : nil
+            return HistoryEntry(url: u, date: Date(timeIntervalSince1970: t), size: size)
         }
         .sorted { $0.date > $1.date }
+    }
+
+    /// 读出一份快照的日期和总大小(要解码整个文件,只在没有记录大小的旧快照上才用)
+    private static func snapshotSummary(at url: URL) -> (date: Date, size: Int64)? {
+        guard let data = try? Data(contentsOf: url),
+              let snap = try? JSONDecoder().decode(ScanSnapshot.self, from: data),
+              snap.version >= 2 else { return nil }
+        return (snap.date, snap.root.s)
+    }
+
+    /// 新扫描完成、写入之前:上一次扫描的日期和总大小,用来提示“比上次多了多少”
+    static func previousSummary(for path: String, before date: Date) -> (date: Date, size: Int64)? {
+        if let e = history(for: path).first(where: { $0.date < date.addingTimeInterval(-1) }) {
+            if let s = e.size { return (e.date, s) }
+            return snapshotSummary(at: e.url)
+        }
+        // 还没有历史:用现有的“最新结果”
+        guard let s = snapshotSummary(at: fileURL(for: path)), s.date < date.addingTimeInterval(-1) else { return nil }
+        return s
     }
 
     /// 读取某个历史快照
@@ -128,12 +152,12 @@ enum ScanStore {
            let oldData = try? Data(contentsOf: latest),
            let old = try? JSONDecoder().decode(ScanSnapshot.self, from: oldData),
            old.path == snap.path, old.version >= 2 {
-            try? oldData.write(to: historyFile(snap.path, date: old.date), options: .atomic)
+            try? oldData.write(to: historyFile(snap.path, date: old.date, size: old.root.s), options: .atomic)
         }
 
         let data = try JSONEncoder().encode(snap)
         try data.write(to: latest, options: .atomic)
-        try data.write(to: historyFile(snap.path, date: snap.date), options: .atomic)
+        try data.write(to: historyFile(snap.path, date: snap.date, size: snap.root.s), options: .atomic)
 
         for e in history(for: snap.path).dropFirst(maxHistory) {
             try? fm.removeItem(at: e.url)

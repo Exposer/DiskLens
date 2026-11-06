@@ -30,6 +30,10 @@ struct ContentView: View {
                 stoppedBanner
                 Divider()
             }
+            if let d = vm.scanDelta, !vm.scanning, !vm.scanStopped {
+                deltaBanner(d)
+                Divider()
+            }
             Group {
                 if let cur = vm.current {
                     HSplitView {
@@ -172,6 +176,46 @@ struct ContentView: View {
         .padding(.horizontal, 12)
         .padding(.vertical, 6)
         .background(appAccent.opacity(0.14))
+    }
+
+    /// 扫描完成后的提示:和上一次扫描相比,总共多了 / 少了多少
+    private func deltaBanner(_ d: ScanDelta) -> some View {
+        let when = relativeDate(d.prevDate)
+        let amount = formatSize(abs(d.delta))
+        let range = "\(formatSize(d.prevSize)) → \(formatSize(d.newSize))"
+        let grew = d.delta > 0
+        let tint: Color = d.isUnchanged ? .secondary : (grew ? .orange : .green)
+        let message: String
+        if d.isUnchanged {
+            message = tr("和上次扫描(\(when))相比,基本没有变化。",
+                         "Practically unchanged since the last scan (\(when)).")
+        } else if grew {
+            message = tr("比上次扫描(\(when))多了 \(amount)(\(range))。",
+                         "\(amount) more than the last scan (\(when)): \(range).")
+        } else {
+            message = tr("比上次扫描(\(when))少了 \(amount)(\(range))。",
+                         "\(amount) less than the last scan (\(when)): \(range).")
+        }
+        return HStack(spacing: 8) {
+            Image(systemName: d.isUnchanged ? "equal.circle.fill"
+                  : (grew ? "arrow.up.right.circle.fill" : "arrow.down.right.circle.fill"))
+                .foregroundStyle(tint)
+            Text(message)
+                .font(.callout)
+                .lineLimit(1)
+            Spacer()
+            Button(tr("查看差异", "See what changed")) { vm.showDiff = true }
+            Button {
+                vm.scanDelta = nil
+            } label: {
+                Image(systemName: "xmark.circle.fill")
+            }
+            .buttonStyle(.borderless)
+            .help(tr("关闭提示", "Dismiss"))
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 6)
+        .background(tint.opacity(0.14))
     }
 
     private var stoppedBanner: some View {

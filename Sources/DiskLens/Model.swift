@@ -300,6 +300,7 @@ final class ViewModel: ObservableObject {
     @Published var hogsLoading = false
     @Published var scanStopped = false          // 扫描被手动停止,当前结果不完整
     @Published var showDiff = false             // 显示“对比扫描”窗口
+    @Published var scanDelta: ScanDelta?        // 刚完成的扫描和上一次相比的变化(用于提示条)
     @Published var bigFiles: [BigFile] = []     // 大文件排行榜
     @Published var bigFilter: Category? { didSet { refreshBigFiles() } }
     @Published var bigLimit = 100 { didSet { refreshBigFiles() } }
@@ -361,7 +362,7 @@ final class ViewModel: ObservableObject {
         target = url
         root = nil; current = nil; hovered = nil
         collected = []; scanningPath = ""; selectedCategory = nil; selectedExt = nil
-        isCached = false; scanDate = nil; scanStopped = false
+        isCached = false; scanDate = nil; scanStopped = false; scanDelta = nil
         UserDefaults.standard.set(url.path, forKey: "lastTarget")
         scanning = true
         scannedBytes = 0
@@ -381,6 +382,8 @@ final class ViewModel: ObservableObject {
             let date = Date()
             // 先在后台生成可序列化的快照,界面更新后再写盘
             let snap = ScanSnapshot(path: url.path, date: date, root: ScanStore.dto(r))
+            // 在写入新快照之前,取出上一次扫描的大小,用来提示“比上次多了多少”
+            let prev = s.wasCancelled ? nil : ScanStore.previousSummary(for: url.path, before: date)
             let accepted = await MainActor.run { () -> Bool in
                 guard let self, self.scanner === s else { return false }
                 self.timer?.invalidate()
@@ -389,6 +392,7 @@ final class ViewModel: ObservableObject {
                 self.scanDate = date
                 self.isCached = false
                 self.scanStopped = s.wasCancelled
+                self.scanDelta = prev.map { ScanDelta(prevDate: $0.date, prevSize: $0.size, newSize: r.size) }
                 self.scanning = false
                 return true
             }

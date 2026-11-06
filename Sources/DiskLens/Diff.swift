@@ -112,6 +112,16 @@ enum DiffEngine {
     }
 }
 
+/// 刚完成的扫描和上一次扫描相比的总大小变化
+struct ScanDelta {
+    let prevDate: Date
+    let prevSize: Int64
+    let newSize: Int64
+    var delta: Int64 { newSize - prevSize }
+    /// 变化不到 1 MB 视为没有变化
+    var isUnchanged: Bool { abs(delta) < DiffEngine.threshold }
+}
+
 // MARK: - 窗口
 
 struct DiffSheet: View {
