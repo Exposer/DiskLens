@@ -4,6 +4,8 @@
 
 A native macOS disk-usage analyzer built with SwiftUI. See at a glance what is eating your disk, drill into folders on an interactive sunburst chart, and clean up in one go.
 
+![DiskLens screenshot](docs/screenshot.png)
+
 ## Features
 
 - **Sunburst chart** – up to 4 rings, click a slice to drill in, click the center to go back up, hover to see name and size. Breadcrumbs for quick navigation.
@@ -80,6 +82,8 @@ make_app.sh            Builds DiskLens.app
 [English](#disklens) | **中文**
 
 一款用 SwiftUI 编写的原生 macOS 磁盘空间分析工具。一眼看出是什么占满了你的磁盘,在交互式环形图里逐层深入,再一次性清理。
+
+![DiskLens 截图](docs/screenshot.png)
 
 ## 功能
 
