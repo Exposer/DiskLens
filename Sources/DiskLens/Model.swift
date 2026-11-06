@@ -71,7 +71,10 @@ final class DiskScanner: @unchecked Sendable {
     private let threshold: Int64 = 2 * 1024 * 1024
 
     private static let skipPaths: Set<String> = [
-        "/Volumes", "/System/Volumes", "/dev", "/cores", "/private/var/vm"
+        "/Volumes", "/System/Volumes", "/dev", "/cores", "/private/var/vm",
+        // 根目录下的路径解析入口:列出 /.nofollow 会得到整个根目录的第二份拷贝
+        // (/.nofollow/Users、/.nofollow/System/Volumes/Data……),不跳过会把整块磁盘重复统计
+        "/.nofollow", "/.resolve", "/.vol", "/.file"
     ]
     private static let keys: [URLResourceKey] = [
         .isDirectoryKey, .isSymbolicLinkKey, .totalFileAllocatedSizeKey, .fileAllocatedSizeKey,

@@ -34,7 +34,8 @@ final class DupJob: @unchecked Sendable {
 }
 
 enum DupFinder {
-    private static let skipNames: Set<String> = [".git", "node_modules", ".Trash", ".Spotlight-V100", ".fseventsd"]
+    private static let skipNames: Set<String> = [".git", "node_modules", ".Trash", ".Spotlight-V100", ".fseventsd",
+                                                  ".nofollow", ".resolve", ".vol"]
 
     static func find(root: URL, minSize: Int64, job: DupJob) -> [DupGroup] {
         let fm = FileManager.default
