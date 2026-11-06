@@ -62,7 +62,15 @@ final class Node: Identifiable, @unchecked Sendable {
 // MARK: - 扫描器
 
 final class DiskScanner: @unchecked Sendable {
-    private struct Entry { let url: URL; let isDir: Bool; let size: Int64; let mod: Date? }
+    /// 目录里的一个条目。URL 是按需生成的:绝大多数是小文件,根本用不到,省掉几十万次 URL 构造
+    private struct Entry {
+        let parent: URL
+        let name: String
+        let isDir: Bool
+        let size: Int64
+        let mod: Date?
+        var url: URL { parent.appendingPathComponent(name, isDirectory: isDir) }
+    }
 
     private let lock = NSLock()
     private var bytes: Int64 = 0
@@ -90,21 +98,54 @@ final class DiskScanner: @unchecked Sendable {
     ]
     private static let keySet = Set(keys)
 
-    /// 允许进入的卷。扫描不跨越文件系统边界(类似 `du -x`):挂载进目录树的磁盘映像
-    /// (Xcode 模拟器运行时、系统资源镜像)、外接盘、网络卷、自动挂载点都不会被算进去,
-    /// 否则同一份数据会被重复统计,总数甚至超过磁盘本身的容量。
+    /// 不跨越文件系统边界(类似 `du -x`):挂载进目录树的磁盘映像(Xcode 模拟器运行时、系统资源镜像)、
+    /// 外接盘、网络卷、自动挂载点都不会被算进去,否则同一份数据会被重复统计,总数甚至超过磁盘本身的容量。
     /// 从 "/" 扫描时,个人数据所在的 Data 卷(通过 firmlink 出现在 /Users、/Library 等位置)也允许进入。
-    private var allowedVolumes: [AnyObject] = []
+    ///
+    /// 批量读目录(getattrlistbulk)返回的是父目录文件系统里的条目,挂载点目录看起来仍然属于父卷,
+    /// 所以不能再靠“条目所在卷”判断。改成扫描开始时用 getmntinfo 列出所有挂载点,
+    /// 把不属于允许卷的挂载点路径收进拦截名单,遍历到时按路径跳过。
+    private var blockedMounts: Set<String> = []
 
-    private func volumeID(_ path: String) -> AnyObject? {
-        (try? URL(fileURLWithPath: path).resourceValues(forKeys: [.volumeIdentifierKey]))?
-            .volumeIdentifier as AnyObject?
+    private static func fsid(of path: String) -> [Int32]? {
+        var st = statfs()
+        guard statfs(path, &st) == 0 else { return nil }
+        return [st.f_fsid.val.0, st.f_fsid.val.1]
     }
 
-    private func isAllowed(_ id: AnyObject?) -> Bool {
-        guard let id else { return true }          // 读不到就不拦,避免误伤
-        return allowedVolumes.contains { $0.isEqual(id) }
+    private func computeBlockedMounts(root: URL) {
+        var allowed: [[Int32]] = []
+        if let r = Self.fsid(of: root.path) { allowed.append(r) }
+        if root.standardizedFileURL.path == "/", let d = Self.fsid(of: "/System/Volumes/Data") { allowed.append(d) }
+        var blocked: Set<String> = []
+        var list: UnsafeMutablePointer<statfs>?
+        let n = getmntinfo(&list, MNT_NOWAIT)
+        if n > 0, let list {
+            for i in 0..<Int(n) {
+                var fs = list[i]
+                let id = [fs.f_fsid.val.0, fs.f_fsid.val.1]
+                if allowed.contains(id) { continue }
+                let mp = withUnsafePointer(to: &fs.f_mntonname) {
+                    $0.withMemoryRebound(to: CChar.self, capacity: Int(MAXPATHLEN)) { String(cString: $0) }
+                }
+                blocked.insert(mp)
+                // 从 "/" 扫描时同一个挂载点也可能以不带 Data 前缀的路径出现
+                let dataPrefix = "/System/Volumes/Data"
+                if mp.hasPrefix(dataPrefix + "/") { blocked.insert(String(mp.dropFirst(dataPrefix.count))) }
+            }
+        }
+        blockedMounts = blocked
     }
+
+    /// 要跳过的路径,按“父目录 → 名字集合”索引:遍历时只有父目录命中才需要比较,不用给每个条目拼路径
+    private static let skipByParent: [String: Set<String>] = {
+        var m: [String: Set<String>] = [:]
+        for p in skipPaths.union(cloudPaths) {
+            let ns = p as NSString
+            m[ns.deletingLastPathComponent, default: []].insert(ns.lastPathComponent)
+        }
+        return m
+    }()
 
     private var path = ""
     private var extTotals: [String: ExtTotal] = [:]
@@ -130,21 +171,28 @@ final class DiskScanner: @unchecked Sendable {
     private func add(_ n: Int64) { lock.lock(); bytes += n; lock.unlock() }
 
     func scan(_ url: URL) -> Node {
-        allowedVolumes = [volumeID(url.path)].compactMap { $0 }
-        if url.standardizedFileURL.path == "/", let data = volumeID("/System/Volumes/Data") {
-            allowedVolumes.append(data)
-        }
+        computeBlockedMounts(root: url)
         let root = Node(url: url, isDir: true)
         let entries = list(url)
         var results = [Node?](repeating: nil, count: entries.count)
         let resultLock = NSLock()
 
-        // 第一层并行扫描,充分利用 M4 的多核
-        DispatchQueue.concurrentPerform(iterations: entries.count) { i in
-            let e = entries[i]
-            let n = self.build(e.url, isDir: e.isDir, size: e.size, mod: e.mod, inApp: false)
-            resultLock.lock(); results[i] = n; resultLock.unlock()
+        // 目录并行扫描,充分利用多核;文件直接处理
+        let group = DispatchGroup()
+        for (i, e) in entries.enumerated() {
+            if e.isDir {
+                group.enter()
+                DispatchQueue.global(qos: .userInitiated).async {
+                    self.buildAsync(e.url, inApp: false, depth: 1) { n in
+                        resultLock.lock(); results[i] = n; resultLock.unlock()
+                        group.leave()
+                    }
+                }
+            } else {
+                results[i] = build(e.url, isDir: false, size: e.size, mod: e.mod, inApp: false)
+            }
         }
+        group.wait()
         let top = results.compactMap { $0 }
         var cats = [Int64](repeating: 0, count: Category.count)
         for n in top {
@@ -176,6 +224,64 @@ final class DiskScanner: @unchecked Sendable {
         node.children = kept.sorted { $0.size > $1.size }
     }
 
+    /// 这一层以内的子目录并行扫描。以前只有第一层并行,从 "/" 扫描时占 63% 的 Users 整棵树都是单线程,
+    /// 12 个核平均只用了不到 1 个;再往深处分叉就只是调度开销,所以设个上限,更深的在当前线程里顺序扫。
+    /// 注意不能用嵌套的 concurrentPerform:GCD 会把内层压成单线程,实测完全没有加速。
+    private static let parallelDepth = 6
+
+    /// 一个目录本层的扫描结果:本层文件已经统计完,子目录还没进去
+    private struct Level {
+        var cats: [Int64]
+        var kids: [Node]
+        var smallBytes: Int64
+        var dirs: [Entry]
+        let inApp: Bool
+    }
+
+    /// 列出一个目录,统计本层的文件(子目录留给调用方递归)
+    private func scanLevel(_ url: URL, inApp parentInApp: Bool) -> Level {
+        lock.lock(); path = url.path; lock.unlock()
+        // .app 包里的所有文件都算“应用程序”
+        let inApp = parentInApp || url.pathExtension.lowercased() == "app"
+        var lv = Level(cats: [Int64](repeating: 0, count: Category.count), kids: [], smallBytes: 0, dirs: [], inApp: inApp)
+        var fileBytes: Int64 = 0
+        var localExts: [String: ExtTotal] = [:]
+        for e in list(url) {
+            if e.isDir { lv.dirs.append(e); continue }
+            fileBytes += e.size
+            let ext = (e.name as NSString).pathExtension.lowercased()
+            localExts[ext, default: ExtTotal()].add(e.size)
+            lv.cats[Category.of(ext: ext, inApp: inApp).rawValue] += e.size
+            // 小文件最后都会被合并掉,所以根本不建节点——扫描时的峰值内存因此小得多
+            if e.size >= threshold {
+                let fileNode = Node(url: e.url, isDir: false, size: e.size)
+                fileNode.mod = e.mod
+                lv.kids.append(fileNode)
+            } else {
+                lv.smallBytes += e.size
+            }
+        }
+        add(fileBytes)
+        mergeExts(localExts)
+        return lv
+    }
+
+    /// 子目录都扫完后收尾:合并类别、建 Small items、排序
+    private func complete(_ node: Node, _ lv: Level, subs: [Node?]) {
+        var cats = lv.cats
+        var kids = lv.kids
+        for c in subs {
+            guard let c else { continue }
+            if c.cats.count == Category.count {
+                for i in 0..<Category.count { cats[i] += c.cats[i] }
+            }
+            kids.append(c)
+        }
+        node.cats = cats
+        finish(node, kids: kids, extraSmall: lv.smallBytes)
+    }
+
+    /// 顺序版本:整棵子树在当前线程里扫完
     private func build(_ url: URL, isDir: Bool, size: Int64, mod: Date? = nil, inApp: Bool) -> Node {
         let node = Node(url: url, isDir: isDir, size: size)
         node.mod = isDir ? nil : mod
@@ -185,65 +291,151 @@ final class DiskScanner: @unchecked Sendable {
             return node
         }
         if isCancelled { return node }
-        lock.lock(); path = url.path; lock.unlock()
-
-        // .app 包里的所有文件都算“应用程序”
-        let inApp = inApp || url.pathExtension.lowercased() == "app"
-        var cats = [Int64](repeating: 0, count: Category.count)
-        var kids: [Node] = []
-        var fileBytes: Int64 = 0
-        var smallFileBytes: Int64 = 0
-        var localExts: [String: ExtTotal] = [:]
-        for e in list(url) {
+        let lv = scanLevel(url, inApp: inApp)
+        var subs = [Node?]()
+        subs.reserveCapacity(lv.dirs.count)
+        for e in lv.dirs {
             if isCancelled { break }
-            if e.isDir {
-                let c = build(e.url, isDir: true, size: 0, inApp: inApp)
-                if c.cats.count == Category.count {
-                    for i in 0..<Category.count { cats[i] += c.cats[i] }
-                }
-                kids.append(c)
-            } else {
-                fileBytes += e.size
-                localExts[extKey(e.url), default: ExtTotal()].add(e.size)
-                cats[Category.of(e.url, inApp: inApp).rawValue] += e.size
-                // 小文件最后都会被合并掉,所以根本不建节点——扫描时的峰值内存因此小得多
-                if e.size >= threshold {
-                    let fileNode = Node(url: e.url, isDir: false, size: e.size)
-                    fileNode.mod = e.mod
-                    kids.append(fileNode)
-                } else {
-                    smallFileBytes += e.size
-                }
-            }
+            subs.append(build(e.url, isDir: true, size: 0, inApp: lv.inApp))
         }
-        add(fileBytes)
-        mergeExts(localExts)
-        node.cats = cats
-        finish(node, kids: kids, extraSmall: smallFileBytes)
+        complete(node, lv, subs: subs)
         return node
     }
 
+    /// 某个目录还在等多少个子目录
+    private final class Pending: @unchecked Sendable {
+        let lock = NSLock()
+        var remaining: Int
+        var subs: [Node?]
+        init(_ n: Int) { remaining = n; subs = [Node?](repeating: nil, count: n) }
+    }
+
+    /// 并行版本:每个子目录作为独立任务丢进全局队列,最后一个完成的子目录负责收尾父目录。
+    /// 不阻塞任何线程,所以不会因为等待而耗尽线程池。
+    private func buildAsync(_ url: URL, inApp: Bool, depth: Int, done: @escaping @Sendable (Node) -> Void) {
+        let node = Node(url: url, isDir: true, size: 0)
+        if isCancelled { done(node); return }
+        let lv = scanLevel(url, inApp: inApp)
+        if lv.dirs.isEmpty { complete(node, lv, subs: []); done(node); return }
+        if depth >= Self.parallelDepth {
+            var subs = [Node?]()
+            for e in lv.dirs {
+                if isCancelled { break }
+                subs.append(build(e.url, isDir: true, size: 0, inApp: lv.inApp))
+            }
+            complete(node, lv, subs: subs)
+            done(node)
+            return
+        }
+        let pending = Pending(lv.dirs.count)
+        for (i, e) in lv.dirs.enumerated() {
+            DispatchQueue.global(qos: .userInitiated).async {
+                self.buildAsync(e.url, inApp: lv.inApp, depth: depth + 1) { child in
+                    pending.lock.lock()
+                    pending.subs[i] = child
+                    pending.remaining -= 1
+                    let last = pending.remaining == 0
+                    let subs = pending.subs
+                    pending.lock.unlock()
+                    if last {
+                        self.complete(node, lv, subs: subs)
+                        done(node)
+                    }
+                }
+            }
+        }
+    }
+
+    /// getattrlistbulk 一次系统调用返回一批条目的名字、类型、占用大小和修改时间,
+    /// 比“列目录 + 每个条目单独 stat”省掉绝大部分系统调用。
+    /// 文件系统不支持时(返回 ENOTSUP 之类)回退到 FileManager。
     private func list(_ url: URL) -> [Entry] {
-        // 扫描线程里没有自动释放池的回收点:不包一层,Foundation 产生的临时对象会一直堆到整棵子树扫完
         autoreleasepool {
-            guard let items = try? FileManager.default.contentsOfDirectory(
-                at: url, includingPropertiesForKeys: Self.keys, options: []) else { return [] }
+            var dirPath = url.path
+            if dirPath.count > 1, dirPath.hasSuffix("/") { dirPath.removeLast() }
+            let fd = open(dirPath, O_RDONLY | O_DIRECTORY)
+            guard fd >= 0 else { return [] }
+            defer { close(fd) }
+
+            var al = attrlist()
+            al.bitmapcount = UInt16(ATTR_BIT_MAP_COUNT)
+            al.commonattr = attrgroup_t(ATTR_CMN_RETURNED_ATTRS) | attrgroup_t(ATTR_CMN_NAME)
+                | attrgroup_t(ATTR_CMN_OBJTYPE) | attrgroup_t(ATTR_CMN_MODTIME)
+            al.fileattr = attrgroup_t(ATTR_FILE_ALLOCSIZE)
+
+            let bufSize = 128 * 1024
+            let buf = UnsafeMutableRawPointer.allocate(byteCount: bufSize, alignment: 8)
+            defer { buf.deallocate() }
+            let skip = Self.skipByParent[dirPath]
+            let prefix = dirPath == "/" ? "/" : dirPath + "/"
             var out: [Entry] = []
-            out.reserveCapacity(items.count)
-            for u in items {
-                // 目录的 path 有时带末尾斜杠(例如 "/.nofollow/"),比较前先去掉,否则跳过列表对不上
-                var p = u.path
-                if p.count > 1, p.hasSuffix("/") { p.removeLast() }
-                if Self.skipPaths.contains(p) || Self.cloudPaths.contains(p) { continue }
-                let v = try? u.resourceValues(forKeys: Self.keySet)
-                if v?.isSymbolicLink == true { continue }
-                if v?.isDirectory == true, !isAllowed(v?.volumeIdentifier as AnyObject?) { continue }
-                let size = Int64(v?.totalFileAllocatedSize ?? v?.fileAllocatedSize ?? 0)
-                out.append(Entry(url: u, isDir: v?.isDirectory == true, size: size,
-                                 mod: v?.contentModificationDate))
+
+            // vnode 类型(sys/vnode.h 没有导出到用户态)
+            let vDir: UInt32 = 2, vLnk: UInt32 = 5
+
+            while true {
+                let n = getattrlistbulk(fd, &al, buf, bufSize, UInt64(FSOPT_PACK_INVAL_ATTRS))
+                if n < 0 {
+                    if out.isEmpty && (errno == ENOTSUP || errno == EINVAL) { return listFallback(url) }
+                    break
+                }
+                if n == 0 { break }
+                var rec = buf
+                for _ in 0..<Int(n) {
+                    let recLen = Int(rec.loadUnaligned(as: UInt32.self))
+                    var q = rec + 4
+                    let returned = q.loadUnaligned(as: attribute_set_t.self)
+                    q += MemoryLayout<attribute_set_t>.size
+                    defer { rec += recLen }
+
+                    guard returned.commonattr & attrgroup_t(ATTR_CMN_NAME) != 0 else { continue }
+                    let ref = q.loadUnaligned(as: attrreference_t.self)
+                    let name = String(cString: (q + Int(ref.attr_dataoffset)).assumingMemoryBound(to: CChar.self))
+                    q += MemoryLayout<attrreference_t>.size
+
+                    var type: UInt32 = 0
+                    if returned.commonattr & attrgroup_t(ATTR_CMN_OBJTYPE) != 0 {
+                        type = q.loadUnaligned(as: UInt32.self); q += 4
+                    }
+                    var mod: Date?
+                    if returned.commonattr & attrgroup_t(ATTR_CMN_MODTIME) != 0 {
+                        let ts = q.loadUnaligned(as: timespec.self); q += MemoryLayout<timespec>.size
+                        mod = Date(timeIntervalSince1970: Double(ts.tv_sec) + Double(ts.tv_nsec) / 1e9)
+                    }
+                    var alloc: Int64 = 0
+                    if returned.fileattr & attrgroup_t(ATTR_FILE_ALLOCSIZE) != 0 {
+                        alloc = q.loadUnaligned(as: Int64.self)
+                    }
+
+                    if type == vLnk { continue }
+                    if let skip, skip.contains(name) { continue }
+                    let isDir = type == vDir
+                    if isDir, !blockedMounts.isEmpty, blockedMounts.contains(prefix + name) { continue }
+                    out.append(Entry(parent: url, name: name, isDir: isDir, size: isDir ? 0 : alloc, mod: mod))
+                }
             }
             return out
         }
+    }
+
+    /// 旧的列目录方式:不支持 getattrlistbulk 的文件系统走这里
+    private func listFallback(_ url: URL) -> [Entry] {
+        guard let items = try? FileManager.default.contentsOfDirectory(
+            at: url, includingPropertiesForKeys: Self.keys, options: []) else { return [] }
+        var out: [Entry] = []
+        out.reserveCapacity(items.count)
+        for u in items {
+            var p = u.path
+            if p.count > 1, p.hasSuffix("/") { p.removeLast() }
+            if Self.skipPaths.contains(p) || Self.cloudPaths.contains(p) { continue }
+            if blockedMounts.contains(p) { continue }
+            let v = try? u.resourceValues(forKeys: Self.keySet)
+            if v?.isSymbolicLink == true { continue }
+            let size = Int64(v?.totalFileAllocatedSize ?? v?.fileAllocatedSize ?? 0)
+            out.append(Entry(parent: url, name: u.lastPathComponent, isDir: v?.isDirectory == true,
+                             size: size, mod: v?.contentModificationDate))
+        }
+        return out
     }
 }
 
