@@ -454,14 +454,52 @@ final class ViewModel: ObservableObject {
                 self.scanning = false
                 if let loaded {
                     self.root = loaded.root
-                    self.current = loaded.root
                     self.scanDate = loaded.date
                     self.isCached = true
+                    // 内存被释放之前停留的文件夹:沿着名字找回去
+                    var node = loaded.root
+                    for name in self.pendingPath {
+                        guard let next = node.children.first(where: { !$0.isAggregate && $0.name == name }) else { break }
+                        node = next
+                    }
+                    self.pendingPath = []
+                    self.current = node
                 } else {
                     self.scan(url)
                 }
             }
         }
+    }
+
+    // MARK: 窗口隐藏后释放内存
+
+    /// 内存释放前所在的文件夹(从根往下的名字),重新载入后回到那里
+    private var pendingPath: [String] = []
+    /// 扫描结果当前是否因为窗口长时间隐藏而被释放了
+    private(set) var memoryReleased = false
+
+    /// 窗口隐藏了一段时间后调用:释放扫描树和所有由它派生的数据,只留磁盘上的缓存。
+    /// 有可能丢失工作成果的情况(正在扫描 / 查找、收集器有内容、扫描被中途停止、没有缓存)一律不释放。
+    func releaseMemory() {
+        guard let r = root, !scanning, !scanStopped, !hogsLoading, dupState != .running,
+              collected.isEmpty, !showDiff, dragNode == nil, pendingTrash == nil,
+              FileManager.default.fileExists(atPath: ScanStore.fileURL(for: r.url.path).path)
+        else { return }
+        pendingPath = trail.dropFirst().map { $0.name }
+        hovered = nil
+        topFiles = []; bigFiles = []; extStats = []; extHighlight = [:]
+        scanner = nil          // 连同它保存的扩展名总表一起释放
+        current = nil          // 触发 rebuild():环形图分段清空
+        root = nil
+        memoryReleased = true
+        malloc_zone_pressure_relief(nil, 0)   // 让系统马上收回释放掉的内存页
+    }
+
+    /// 窗口重新显示时调用:如果内存被释放过,从缓存载回来
+    func restoreIfReleased() {
+        guard memoryReleased else { return }
+        memoryReleased = false
+        loadCachedOrScan()
     }
 
     /// 停止当前扫描:已扫到的部分会保留并显示,但标记为不完整,也不会保存为缓存

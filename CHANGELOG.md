@@ -9,6 +9,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Versions `0.1.0`
 ## [Unreleased]
 
 ### Added / 新增
+- **Memory is released while the window is hidden**: 3 minutes after the window is closed (or after a quiet login launch), DiskLens drops the scan tree and everything derived from it, leaving only the menu bar monitor in memory. Opening the window again reloads the saved scan and returns to the folder you were in. Nothing is released while a scan or duplicate search is running, when the Collector has items, when a scan was stopped early, or while the window is minimized to the Dock. / **窗口隐藏后释放内存**:关掉窗口(或开机安静启动)3 分钟后,DiskLens 会释放扫描树和所有由它派生的数据,内存里只剩菜单栏监控。再次打开窗口时会从已保存的扫描结果重新载入,并回到之前所在的文件夹。正在扫描 / 查找重复文件、收集器里有内容、扫描被中途停止、窗口最小化在 Dock 里时都不会释放。
+
+### Added / 新增
 - **Build number**: the app version is now shown as `1.0 (build N)` (e.g. in the About panel), where N is the number of commits, so every change gets a new build number automatically. / **Build 号**:应用版本现在显示为 `1.0 (build N)`(如「关于 DiskLens」里),N 为 git 提交数,每次改动提交后自动加 1。
 
 ### Fixed / 修复

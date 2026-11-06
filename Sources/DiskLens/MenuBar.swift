@@ -18,6 +18,25 @@ func compactSize(_ bytes: Int64) -> String {
 final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     static weak var shared: AppDelegate?
     private(set) var mainWindow: NSWindow?
+    /// 主窗口的 ViewModel(由 RootView 登记),窗口隐藏一段时间后用来释放内存
+    weak var viewModel: ViewModel?
+    private var trimTimer: Timer?
+    /// 窗口隐藏多久后释放扫描结果的内存
+    private static let trimDelay: TimeInterval = 180
+
+    private func scheduleTrim() {
+        trimTimer?.invalidate()
+        let t = Timer.scheduledTimer(withTimeInterval: Self.trimDelay, repeats: false) { [weak self] _ in
+            Task { @MainActor in
+                guard let self, let w = self.mainWindow else { return }
+                // 期间窗口又被打开了,或者最小化在 Dock 里(随时会还原),都不释放
+                guard !w.isVisible || self.isQuiet, !w.isMiniaturized else { return }
+                self.viewModel?.releaseMemory()
+            }
+        }
+        t.tolerance = 30
+        trimTimer = t
+    }
 
     /// 这次是不是开机(登录)时自动启动的:true 时不弹窗口,只在菜单栏里待着
     private var hideOnLaunch = false
@@ -90,6 +109,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
                     window.orderOut(nil)
                 }
             }
+            scheduleTrim()
         }
     }
 
@@ -106,6 +126,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         sender.orderOut(nil)
         // 窗口收起之后,纯菜单栏模式下把 Dock 图标藏起来
         DispatchQueue.main.async { [weak self] in self?.applyPolicy() }
+        scheduleTrim()
         return false
     }
 
@@ -113,6 +134,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         // 开机启动时用的是“无 Dock 图标”模式,打开窗口时恢复成普通应用
         NSApp.setActivationPolicy(.regular)
         NSApp.activate(ignoringOtherApps: true)
+        trimTimer?.invalidate()
+        MainActor.assumeIsolated { viewModel?.restoreIfReleased() }
         guard let w = mainWindow else { return }
         isQuiet = false
         w.alphaValue = 1

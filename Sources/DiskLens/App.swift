@@ -39,7 +39,10 @@ struct RootView: View {
     var body: some View {
         ContentView(vm: vm, monitor: monitor, onPrefsChange: { version += 1 })
             .id(version)
-            .onAppear { monitor.start() }
+            .onAppear {
+                monitor.start()
+                AppDelegate.shared?.viewModel = vm
+            }
             .background(WindowAccessor { AppDelegate.shared?.adopt($0) })
             .tint(Prefs.theme.accent)
             .preferredColorScheme(Prefs.theme.scheme)
