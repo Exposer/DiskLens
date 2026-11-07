@@ -248,7 +248,11 @@ enum ReportBuilder {
     // MARK: CSV
 
     private static func field(_ s: String) -> String {
-        "\"" + s.replacingOccurrences(of: "\"", with: "\"\"") + "\""
+        // 以 = + - @ 或制表符 / 回车开头的单元格,Excel / Numbers 会当成公式执行(文件名完全可以是 =HYPERLINK(...)):
+        // 前面加一个单引号,让它只当文本显示
+        var v = s
+        if let c = v.unicodeScalars.first, "=+-@\t\r".unicodeScalars.contains(c) { v = "'" + v }
+        return "\"" + v.replacingOccurrences(of: "\"", with: "\"\"") + "\""
     }
 
     /// 扫描结果里所有 ≥2MB 的文件,按大小从大到小

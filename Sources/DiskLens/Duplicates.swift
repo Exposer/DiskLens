@@ -41,7 +41,12 @@ enum DupFinder {
         let fm = FileManager.default
         let keys: [URLResourceKey] = [.isRegularFileKey, .isSymbolicLinkKey, .isDirectoryKey,
                                       .fileSizeKey, .contentModificationDateKey]
-        let libraryPath = fm.homeDirectoryForCurrentUser.appendingPathComponent("Library").standardizedFileURL.path
+        let libraryURL = fm.homeDirectoryForCurrentUser.appendingPathComponent("Library").standardizedFileURL
+        let libraryPath = libraryURL.path
+        // 查找范围本身就在 ~/Library 里(枚举器不会把起点当作条目返回):直接不查,和界面上写的“跳过 ~/Library”一致
+        if urlIsInside(root, of: libraryURL) { return [] }
+        // 与扫描器一致:不进入其它卷(外接盘、网络盘、磁盘映像),也不进入 /Volumes、云盘目录等
+        let blockedMounts = DiskScanner.blockedMountPaths(root: root)
 
         // 1. 列出文件,按大小分组(跳过 .app 等包内部、.git、node_modules、~/Library)
         job.set(tr("正在列出文件…", "Listing files…"))
@@ -60,7 +65,9 @@ enum DupFinder {
                 guard let u = obj as? URL, let v = try? u.resourceValues(forKeys: keySet) else { return }
                 if v.isSymbolicLink == true { return }
                 if v.isDirectory == true {
-                    if skipNames.contains(u.lastPathComponent) || u.standardizedFileURL.path == libraryPath {
+                    let p = u.standardizedFileURL.path
+                    if skipNames.contains(u.lastPathComponent) || p == libraryPath
+                        || DiskScanner.isSkippedPath(p) || blockedMounts.contains(p) {
                         en.skipDescendants()
                     }
                     return
@@ -235,20 +242,40 @@ extension ViewModel {
         !isCollected(dupNode(f, size: g.size)) && uncollectedCount(g) > 1
     }
 
-    /// 保留这一份,其余加入收集器
-    func keepOnly(_ f: DupFile, in g: DupGroup) {
-        for other in g.files where other.id != f.id {
-            collect(dupNode(other, size: g.size))
-        }
+    /// 这份文件只是因为它的上级目录在收集器里才算“已收集”(它自己不在收集器里):
+    /// 这种情况下没法单独保留它,上级目录进废纸篓时它也会被带走
+    private func coveredByCollectedFolder(_ url: URL) -> Bool {
+        let p = url.standardizedFileURL.path
+        return collected.contains { $0.url.standardizedFileURL.path != p && urlIsInside(url, of: $0.url) }
     }
 
-    /// 每组保留修改时间最早的一份,其余全部加入收集器
+    /// 保留 keeper:先把它从收集器里拿出来(之前可能单独收集过),再收集其余的。
+    /// 保证这一组至少有一份不会被移到废纸篓;做不到就什么都不改,返回 false
+    @discardableResult
+    private func keep(_ keeper: DupFile, in g: DupGroup) -> Bool {
+        if coveredByCollectedFolder(keeper.url) { return false }
+        let kp = keeper.url.standardizedFileURL.path
+        collected.removeAll { $0.url.standardizedFileURL.path == kp }
+        for other in g.files where other.id != keeper.id {
+            collect(dupNode(other, size: g.size))
+        }
+        return true
+    }
+
+    /// 保留这一份,其余加入收集器
+    func keepOnly(_ f: DupFile, in g: DupGroup) {
+        keep(f, in: g)
+    }
+
+    /// 每组保留修改时间最早的一份,其余全部加入收集器。
+    /// 最早的那份如果已被上级目录收集,就改保留次早的;整组都被收集的跳过。
     func collectDuplicatesKeepingOldest() {
         for g in dupGroups {
             let sorted = g.files.sorted {
                 ($0.mod ?? .distantFuture, $0.url.path) < ($1.mod ?? .distantFuture, $1.url.path)
             }
-            for f in sorted.dropFirst() { collect(dupNode(f, size: g.size)) }
+            guard let keeper = sorted.first(where: { !coveredByCollectedFolder($0.url) }) else { continue }
+            keep(keeper, in: g)
         }
     }
 }

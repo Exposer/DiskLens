@@ -36,6 +36,10 @@ struct ContentView: View {
                 stoppedBanner
                 Divider()
             }
+            if vm.unreadableCount > 0 && !vm.scanning && !vm.scanStopped && !vm.isCached {
+                unreadableBanner
+                Divider()
+            }
             if let d = vm.scanDelta, !vm.scanning, !vm.scanStopped {
                 deltaBanner(d)
                 Divider()
@@ -280,6 +284,29 @@ struct ContentView: View {
         .padding(.horizontal, 12)
         .padding(.vertical, 6)
         .background(tint.opacity(0.14))
+    }
+
+    /// 有目录因权限不足没能读取:这些目录按 0 计,总大小会偏小,对比也不可靠
+    private var unreadableBanner: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "lock.trianglebadge.exclamationmark.fill")
+                .foregroundStyle(.orange)
+            Text(tr("有 \(vm.unreadableCount) 个目录因权限不足没能读取,总大小会偏小。授予「完全磁盘访问权限」后重新扫描。",
+                    "\(vm.unreadableCount) folders couldn't be read (permission denied), so totals are underestimated. Grant Full Disk Access, then rescan."))
+                .font(.callout)
+                .lineLimit(1)
+            Spacer()
+            Button(tr("打开设置", "Open Settings")) {
+                if let u = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles") {
+                    NSWorkspace.shared.open(u)
+                }
+            }
+            Button(tr("重新扫描", "Rescan")) { vm.scan(vm.target) }
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 6)
+        .background(Color.orange.opacity(0.14))
+        .help(vm.unreadableSamples.joined(separator: "\n"))
     }
 
     private var stoppedBanner: some View {

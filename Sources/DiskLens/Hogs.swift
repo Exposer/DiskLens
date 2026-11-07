@@ -167,17 +167,21 @@ func urlIsInside(_ child: URL, of parent: URL) -> Bool {
 
 enum HogScanner {
     static func size(of url: URL) -> Int64 {
-        let keys: [URLResourceKey] = [.totalFileAllocatedSizeKey, .isRegularFileKey]
+        let keys: [URLResourceKey] = [.totalFileAllocatedSizeKey, .isRegularFileKey,
+                                      .linkCountKey, .fileResourceIdentifierKey]
         guard let en = FileManager.default.enumerator(
             at: url, includingPropertiesForKeys: keys, options: [], errorHandler: { _, _ in true }
         ) else { return 0 }
         var total: Int64 = 0
+        var seenLinks = Set<NSObject>()   // 硬链接(如 pnpm store)只算一次
         let keySet = Set(keys)
         var finished = false
         while !finished {
             autoreleasepool {
                 guard let u = en.nextObject() as? URL else { finished = true; return }
                 guard let v = try? u.resourceValues(forKeys: keySet), v.isRegularFile == true else { return }
+                if (v.linkCount ?? 1) > 1, let id = v.fileResourceIdentifier as? NSObject,
+                   !seenLinks.insert(id).inserted { return }
                 total += Int64(v.totalFileAllocatedSize ?? 0)
             }
         }

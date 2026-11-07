@@ -65,7 +65,7 @@ This produces `DiskLens.app`; drag it into `/Applications`. You can also open `P
 
 ## Permissions
 
-To scan protected locations such as `~/Library`, grant **Full Disk Access** in *System Settings → Privacy & Security → Full Disk Access* (a shortcut button is in the app's status bar). Without it, some folders are skipped and totals will be lower.
+To scan protected locations such as `~/Library`, grant **Full Disk Access** in *System Settings → Privacy & Security → Full Disk Access* (a shortcut button is in the app's status bar). Without it, some folders are skipped and totals will be lower; after a scan, a banner tells you how many folders couldn't be read.
 
 ## Notes
 
@@ -172,7 +172,7 @@ swift run -c release
 
 ## 权限
 
-要扫描 `~/Library` 等受保护的位置,请在「系统设置 → 隐私与安全性 → 完全磁盘访问权限」中授权(App 状态栏里有直达按钮)。没有授权的话,部分文件夹会被跳过,统计结果会偏小。
+要扫描 `~/Library` 等受保护的位置,请在「系统设置 → 隐私与安全性 → 完全磁盘访问权限」中授权(App 状态栏里有直达按钮)。没有授权的话,部分文件夹会被跳过,统计结果会偏小;扫描完成后会有提示条告诉你有多少个目录没能读取。
 
 ## 说明
 

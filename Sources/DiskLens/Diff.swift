@@ -133,6 +133,7 @@ struct DiffSheet: View {
     @State private var result: DiffResult?
     @State private var loading = false
     @State private var failed = false
+    @State private var computeToken = UUID()   // 只接受最近一次计算的结果
     @State private var tab = 0            // 0 = 文件夹层级, 1 = 文件变化
     @State private var fileFilter = 0     // 0 = 全部, 1 = 增长(含新增), 2 = 减少(含已删除)
 
@@ -410,13 +411,25 @@ struct DiffSheet: View {
         failed = false
         result = nil
         let newDate = vm.scanDate
+        // 每次计算一个编号:快速切换快照时,慢的旧任务晚到了也不能覆盖当前选中快照的结果
+        let token = UUID()
+        computeToken = token
+        // 在主线程拍一份当前扫描树的不可变快照(后台只读这份拷贝)。
+        // 否则后台遍历 vm.root 时,用户同时把东西移进废纸篓,主线程在改同一批 children / size,是数据竞争。
+        let snapshot = ScanStore.dto(root)
+        let rootURL = root.url
         Task.detached(priority: .userInitiated) {
             guard let old = ScanStore.loadSnapshot(at: url) else {
-                await MainActor.run { loading = false; failed = true }
+                await MainActor.run {
+                    guard computeToken == token else { return }
+                    loading = false; failed = true
+                }
                 return
             }
-            let r = DiffEngine.compute(old: old.root, oldDate: old.date, new: root, newDate: newDate)
+            let new = ScanStore.node(from: snapshot, url: rootURL, parent: nil)
+            let r = DiffEngine.compute(old: old.root, oldDate: old.date, new: new, newDate: newDate)
             await MainActor.run {
+                guard computeToken == token else { return }
                 result = r
                 loading = false
             }

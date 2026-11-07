@@ -130,17 +130,45 @@ func tc(_ h: Double, _ s: Double, _ b: Double) -> Color {
     return Color(hue: h, saturation: min(1, s * t.chartSat), brightness: min(1, b * t.chartBri))
 }
 
+/// 创建 DateFormatter 很贵(每个大文件行都会调用一次),所以按语言缓存起来复用
+private enum FormatterCache {
+    fileprivate static let lock = NSLock()
+    private static var dates: [String: DateFormatter] = [:]
+    private static var relatives: [String: RelativeDateTimeFormatter] = [:]
+
+    /// DateFormatter 本身不是线程安全的:取用和格式化都在同一把锁里
+    static func date() -> DateFormatter {
+        let loc = Prefs.language.locale
+        lock.lock(); defer { lock.unlock() }
+        if let f = dates[loc.identifier] { return f }
+        let f = DateFormatter()
+        f.locale = loc
+        f.dateStyle = .medium
+        f.timeStyle = .short
+        dates[loc.identifier] = f
+        return f
+    }
+
+    static func relative() -> RelativeDateTimeFormatter {
+        let loc = Prefs.language.locale
+        lock.lock(); defer { lock.unlock() }
+        if let f = relatives[loc.identifier] { return f }
+        let f = RelativeDateTimeFormatter()
+        f.locale = loc
+        relatives[loc.identifier] = f
+        return f
+    }
+}
+
 func formatDate(_ d: Date) -> String {
-    let f = DateFormatter()
-    f.locale = Prefs.language.locale
-    f.dateStyle = .medium
-    f.timeStyle = .short
+    let f = FormatterCache.date()
+    FormatterCache.lock.lock(); defer { FormatterCache.lock.unlock() }
     return f.string(from: d)
 }
 
 func relativeDate(_ d: Date) -> String {
-    let f = RelativeDateTimeFormatter()
-    f.locale = Prefs.language.locale
+    let f = FormatterCache.relative()
+    FormatterCache.lock.lock(); defer { FormatterCache.lock.unlock() }
     return f.localizedString(for: d, relativeTo: Date())
 }
 

@@ -62,6 +62,9 @@ final class Node: Identifiable, @unchecked Sendable {
 // MARK: - 扫描器
 
 final class DiskScanner: @unchecked Sendable {
+    /// 一个文件(设备号 + 文件号)
+    private struct FileKey: Hashable { let dev: UInt32; let id: UInt64 }
+
     /// 目录里的一个条目。URL 是按需生成的:绝大多数是小文件,根本用不到,省掉几十万次 URL 构造
     private struct Entry {
         let parent: URL
@@ -73,6 +76,15 @@ final class DiskScanner: @unchecked Sendable {
     }
 
     private let lock = NSLock()
+    /// 已经算过大小的硬链接文件。只有链接数 > 1 的文件会进来,数量有限
+    private let linkLock = NSLock()
+    private var seenLinks = Set<FileKey>()
+    /// 第一次遇到这个 inode 返回 true(要计入大小),之后的链接返回 false。
+    /// 并行扫描时“第一个”是谁不固定,所以同一个 inode 的大小可能记在不同的名字下,总数不受影响
+    private func countsLink(dev: UInt32, id: UInt64) -> Bool {
+        linkLock.lock(); defer { linkLock.unlock() }
+        return seenLinks.insert(FileKey(dev: dev, id: id)).inserted
+    }
     private var bytes: Int64 = 0
     private var cancelled = false
     /// 小于该阈值的文件/目录会被合并成一个“小文件”节点,节省内存
@@ -114,6 +126,11 @@ final class DiskScanner: @unchecked Sendable {
     }
 
     private func computeBlockedMounts(root: URL) {
+        blockedMounts = Self.blockedMountPaths(root: root)
+    }
+
+    /// 与扫描器共用的规则:重复文件查找等其他遍历也要按它跳过其它卷的挂载点
+    static func blockedMountPaths(root: URL) -> Set<String> {
         var allowed: [[Int32]] = []
         if let r = Self.fsid(of: root.path) { allowed.append(r) }
         if root.standardizedFileURL.path == "/", let d = Self.fsid(of: "/System/Volumes/Data") { allowed.append(d) }
@@ -134,7 +151,12 @@ final class DiskScanner: @unchecked Sendable {
                 if mp.hasPrefix(dataPrefix + "/") { blocked.insert(String(mp.dropFirst(dataPrefix.count))) }
             }
         }
-        blockedMounts = blocked
+        return blocked
+    }
+
+    /// 扫描器遍历时固定跳过的路径(/Volumes、firmlink 入口、云盘目录等)
+    static func isSkippedPath(_ path: String) -> Bool {
+        skipPaths.contains(path) || cloudPaths.contains(path)
     }
 
     /// 要跳过的路径,按“父目录 → 名字集合”索引:遍历时只有父目录命中才需要比较,不用给每个条目拼路径
@@ -168,6 +190,21 @@ final class DiskScanner: @unchecked Sendable {
     private var isCancelled: Bool { lock.lock(); defer { lock.unlock() }; return cancelled }
     /// 扫描是否被中途取消(此时得到的树是不完整的)
     var wasCancelled: Bool { isCancelled }
+
+    /// 因为权限不足(EPERM/EACCES,通常是没有“完全磁盘访问权限”)而打不开的目录数,以及前几个样例路径。
+    /// 这些目录按 0 字节计入,所以扫描结果会偏小。
+    private var deniedCount = 0
+    private var deniedSamples: [String] = []
+    var unreadable: (count: Int, samples: [String]) {
+        lock.lock(); defer { lock.unlock() }
+        return (deniedCount, deniedSamples)
+    }
+    private func noteDenied(_ path: String) {
+        lock.lock()
+        deniedCount += 1
+        if deniedSamples.count < 5 { deniedSamples.append(path) }
+        lock.unlock()
+    }
     private func add(_ n: Int64) { lock.lock(); bytes += n; lock.unlock() }
 
     func scan(_ url: URL) -> Node {
@@ -189,11 +226,15 @@ final class DiskScanner: @unchecked Sendable {
                     }
                 }
             } else {
-                results[i] = build(e.url, isDir: false, size: e.size, mod: e.mod, inApp: false)
+                let n = build(e.url, isDir: false, size: e.size, mod: e.mod, inApp: false)
+                // 异步目录任务也在写 results,必须同一把锁,否则是对 Array 的并发写
+                resultLock.lock(); results[i] = n; resultLock.unlock()
             }
         }
         group.wait()
+        resultLock.lock()
         let top = results.compactMap { $0 }
+        resultLock.unlock()
         var cats = [Int64](repeating: 0, count: Category.count)
         for n in top {
             let t = n.categoryTotals(inApp: false)
@@ -354,14 +395,20 @@ final class DiskScanner: @unchecked Sendable {
             var dirPath = url.path
             if dirPath.count > 1, dirPath.hasSuffix("/") { dirPath.removeLast() }
             let fd = open(dirPath, O_RDONLY | O_DIRECTORY)
-            guard fd >= 0 else { return [] }
+            guard fd >= 0 else {
+                if errno == EPERM || errno == EACCES { noteDenied(dirPath) }
+                return []
+            }
             defer { close(fd) }
 
             var al = attrlist()
             al.bitmapcount = UInt16(ATTR_BIT_MAP_COUNT)
+            // 返回顺序按位号:NAME → DEVID → OBJTYPE → MODTIME → FILEID;文件属性:LINKCOUNT → ALLOCSIZE。
+            // 设备号 + 文件号用来给硬链接去重(见 countsLink)
             al.commonattr = attrgroup_t(ATTR_CMN_RETURNED_ATTRS) | attrgroup_t(ATTR_CMN_NAME)
-                | attrgroup_t(ATTR_CMN_OBJTYPE) | attrgroup_t(ATTR_CMN_MODTIME)
-            al.fileattr = attrgroup_t(ATTR_FILE_ALLOCSIZE)
+                | attrgroup_t(ATTR_CMN_DEVID) | attrgroup_t(ATTR_CMN_OBJTYPE)
+                | attrgroup_t(ATTR_CMN_MODTIME) | attrgroup_t(ATTR_CMN_FILEID)
+            al.fileattr = attrgroup_t(ATTR_FILE_LINKCOUNT) | attrgroup_t(ATTR_FILE_ALLOCSIZE)
 
             let bufSize = 128 * 1024
             let buf = UnsafeMutableRawPointer.allocate(byteCount: bufSize, alignment: 8)
@@ -393,6 +440,10 @@ final class DiskScanner: @unchecked Sendable {
                     let name = String(cString: (q + Int(ref.attr_dataoffset)).assumingMemoryBound(to: CChar.self))
                     q += MemoryLayout<attrreference_t>.size
 
+                    var dev: UInt32 = 0
+                    if returned.commonattr & attrgroup_t(ATTR_CMN_DEVID) != 0 {
+                        dev = q.loadUnaligned(as: UInt32.self); q += 4
+                    }
                     var type: UInt32 = 0
                     if returned.commonattr & attrgroup_t(ATTR_CMN_OBJTYPE) != 0 {
                         type = q.loadUnaligned(as: UInt32.self); q += 4
@@ -402,6 +453,16 @@ final class DiskScanner: @unchecked Sendable {
                         let ts = q.loadUnaligned(as: timespec.self); q += MemoryLayout<timespec>.size
                         mod = Date(timeIntervalSince1970: Double(ts.tv_sec) + Double(ts.tv_nsec) / 1e9)
                     }
+                    var fileID: UInt64 = 0
+                    if returned.commonattr & attrgroup_t(ATTR_CMN_FILEID) != 0 {
+                        fileID = q.loadUnaligned(as: UInt64.self); q += 8
+                    }
+                    // 用了 FSOPT_PACK_INVAL_ATTRS:没有的属性(如目录的文件属性)也占位,所以链接数的 4 字节总是要跳过
+                    var linkCount: UInt32 = 1
+                    if returned.fileattr & attrgroup_t(ATTR_FILE_LINKCOUNT) != 0 {
+                        linkCount = q.loadUnaligned(as: UInt32.self)
+                    }
+                    q += 4
                     var alloc: Int64 = 0
                     if returned.fileattr & attrgroup_t(ATTR_FILE_ALLOCSIZE) != 0 {
                         alloc = q.loadUnaligned(as: Int64.self)
@@ -411,7 +472,10 @@ final class DiskScanner: @unchecked Sendable {
                     if let skip, skip.contains(name) { continue }
                     let isDir = type == vDir
                     if isDir, !blockedMounts.isEmpty, blockedMounts.contains(prefix + name) { continue }
-                    out.append(Entry(parent: url, name: name, isDir: isDir, size: isDir ? 0 : alloc, mod: mod))
+                    var size = isDir ? 0 : alloc
+                    // 硬链接(同一个 inode 的多个名字)只算第一次,否则 pnpm store、Homebrew 等会被重复统计
+                    if !isDir, linkCount > 1, fileID != 0, !countsLink(dev: dev, id: fileID) { size = 0 }
+                    out.append(Entry(parent: url, name: name, isDir: isDir, size: size, mod: mod))
                 }
             }
             return out
@@ -569,6 +633,8 @@ final class ViewModel: ObservableObject {
     @Published var topFiles: [Node] = []        // “按类型”模式下,所选类型里最大的文件
     @Published var hogs: [HogItem] = []         // “占用大户”列表
     @Published var hogsLoading = false
+    @Published var unreadableCount = 0          // 上次扫描里因权限不足打不开的目录数(结果会偏小)
+    @Published var unreadableSamples: [String] = []
     @Published var scanStopped = false          // 扫描被手动停止,当前结果不完整
     @Published var showDiff = false             // 显示“对比扫描”窗口
     @Published var scanDelta: ScanDelta?        // 刚完成的扫描和上一次相比的变化(用于提示条)
@@ -601,7 +667,12 @@ final class ViewModel: ObservableObject {
     @Published var errorMessage: String?
     @Published var scanningPath = ""
     @Published var revealing = false            // 环形图“展开”动画进行中
-    @Published var collected: [Node] = []       // 收集器里的项目
+    @Published var collected: [Node] = [] {      // 收集器里的项目
+        didSet { collectedPaths = collected.map { $0.url.standardizedFileURL.path } }
+    }
+    /// 收集器各项的标准化路径,只在收集器变化时重算一次。
+    /// isCollected 每个可见行每次重绘都要调用,不能每次都为每个收集项重建 URL 再标准化
+    private var collectedPaths: [String] = []
     @Published var confirmTrashCollected = false
     @Published var dragNode: Node?              // 正从环形图拖出的节点
     @Published var dragPoint: CGPoint?          // 拖动位置(root 坐标系)
@@ -637,6 +708,7 @@ final class ViewModel: ObservableObject {
         root = nil; current = nil; hovered = nil
         collected = []; scanningPath = ""; selectedCategory = nil; selectedExt = nil
         isCached = false; scanDate = nil; scanStopped = false; scanDelta = nil
+        unreadableCount = 0; unreadableSamples = []
         UserDefaults.standard.set(url.path, forKey: "lastTarget")
         scanning = true
         scannedBytes = 0
@@ -655,8 +727,12 @@ final class ViewModel: ObservableObject {
         Task.detached(priority: .userInitiated) { [weak self] in
             let r = s.scan(url)
             let date = Date()
-            // 先在后台生成可序列化的快照,界面更新后再写盘
-            let snap = ScanSnapshot(path: url.path, date: date, root: ScanStore.dto(r))
+            // 被取代的扫描结果会被丢弃,被停止的结果不完整、不保存:都不必白白拷一遍整棵树(峰值内存 2~3 倍)
+            let stillCurrent = await MainActor.run { self?.scanner === s }
+            guard stillCurrent else { return }
+            // 先在后台生成可序列化的快照,界面更新后再写盘(此时 r 还没交给界面,没人会改它)
+            let snap: ScanSnapshot? = s.wasCancelled
+                ? nil : ScanSnapshot(path: url.path, date: date, root: ScanStore.dto(r))
             // 在写入新快照之前,取出上一次扫描的大小,用来提示“比上次多了多少”
             let prev = s.wasCancelled ? nil : ScanStore.previousSummary(for: url.path, before: date)
             let accepted = await MainActor.run { () -> Bool in
@@ -667,12 +743,15 @@ final class ViewModel: ObservableObject {
                 self.scanDate = date
                 self.isCached = false
                 self.scanStopped = s.wasCancelled
+                let un = s.unreadable
+                self.unreadableCount = un.count
+                self.unreadableSamples = un.samples
                 self.scanDelta = prev.map { ScanDelta(prevDate: $0.date, prevSize: $0.size, newSize: r.size) }
                 self.scanning = false
                 return true
             }
             // 被取消的扫描结果不完整,不保存
-            if accepted && !s.wasCancelled { try? ScanStore.write(snap) }
+            if accepted, !s.wasCancelled, let snap { try? ScanStore.write(snap) }
         }
     }
 
@@ -745,11 +824,20 @@ final class ViewModel: ObservableObject {
     }
 
     /// 清理(移到废纸篓)之后,把更新后的结果重新存盘,日期保持为原扫描时间
+    /// 连续清理时只存一次:每次调用重新计时,安静下来之后才生成快照并写盘。
+    /// (以前每清理一项就在主线程把整棵树拷一遍,几十万节点时界面会卡住好几秒)
     private func saveCache() {
-        guard let r = root, !scanning, !scanStopped else { return }
-        let snap = ScanSnapshot(path: r.url.path, date: scanDate ?? Date(), root: ScanStore.dto(r))
-        Task.detached(priority: .utility) { try? ScanStore.writeLatest(snap) }
+        saveCacheTask?.cancel()
+        saveCacheTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: 800_000_000)
+            guard !Task.isCancelled, let self,
+                  let r = self.root, !self.scanning, !self.scanStopped else { return }
+            // 快照必须在主线程拍(树只有主线程在改);编码和写盘在后台
+            let snap = ScanSnapshot(path: r.url.path, date: self.scanDate ?? Date(), root: ScanStore.dto(r))
+            Task.detached(priority: .utility) { try? ScanStore.writeLatest(snap) }
+        }
     }
+    private var saveCacheTask: Task<Void, Never>?
 
     func open(_ n: Node) {
         if n.isDir && !n.children.isEmpty { current = n }
@@ -771,13 +859,20 @@ final class ViewModel: ObservableObject {
             do {
                 try FileManager.default.trashItem(at: n.url, resultingItemURL: nil)
                 // 占用大户这类独立节点不在扫描树里:按路径找到树里对应的节点再摘除
-                if let target = n.parent == nil ? findInTree(n.url) : n { detach(target) }
+                if n.parent != nil {
+                    detach(n)
+                } else if let target = findInTree(n.url) {
+                    detach(target)
+                } else {
+                    detachUntracked(n.url, size: n.size, isDir: n.isDir)
+                }
                 collected.removeAll { urlIsInside($0.url, of: n.url) }
             } catch {
                 failures.append("\(n.name): \(error.localizedDescription)")
             }
         }
         hovered = nil
+        recoverCurrent()
         rebuild()
         refreshTopFiles()
         saveCache()
@@ -839,7 +934,10 @@ final class ViewModel: ObservableObject {
 
     /// 它自己,或它的某个上级目录,已经在收集器里
     func isCollected(_ n: Node) -> Bool {
-        collected.contains { urlIsInside(n.url, of: $0.url) }
+        if collectedPaths.isEmpty { return false }
+        let p = n.url.standardizedFileURL.path
+        for c in collectedPaths where p == c || p.hasPrefix(c.hasSuffix("/") ? c : c + "/") { return true }
+        return false
     }
 
     func collect(_ n: Node) {
@@ -856,6 +954,7 @@ final class ViewModel: ObservableObject {
     private func detach(_ n: Node) {
         let s = n.size
         let t = n.categoryTotals(inApp: n.parent?.isInsideApp ?? false)
+        subtractExactExts(of: n)
         var p = n.parent
         n.parent?.children.removeAll { $0 === n }
         while let q = p {
@@ -864,6 +963,79 @@ final class ViewModel: ObservableObject {
                 for i in 0..<Category.count { q.cats[i] = max(0, q.cats[i] - t[i]) }
             }
             p = q.parent
+        }
+    }
+
+    /// 从根节点的“精确扩展名总表”里扣掉被删除的节点。
+    /// 树里只有 ≥2MB 的文件有节点;如果删的东西里还有没节点的小文件(整个文件夹、合并的小项目),
+    /// 就没法知道它们各属于哪个扩展名:这时丢掉精确表,「按扩展名」改用扫描树统计,而不是继续显示过时的数字。
+    private func subtractExactExts(of n: Node) {
+        guard let root, root.extTotals != nil else { return }
+        var known: Int64 = 0
+        func walk(_ x: Node) {
+            if x.isAggregate { return }
+            if x.isDir { x.children.forEach(walk); return }
+            known += x.size
+            let k = x.ext
+            if var t = root.extTotals?[k] {
+                t.bytes = max(0, t.bytes - x.size)
+                t.count = max(0, t.count - 1)
+                if t.count == 0 && t.bytes == 0 { root.extTotals?[k] = nil } else { root.extTotals?[k] = t }
+            }
+        }
+        walk(n)
+        if n.size > known { root.extTotals = nil }
+    }
+
+    /// 被删的东西在扫描树里没有节点(例如 1~2MB 的重复文件被合并进了「小文件」):
+    /// 沿路径找到树里最深的上级目录,从它的「小文件」节点和各级上级里扣掉这部分大小
+    private func detachUntracked(_ url: URL, size s: Int64, isDir: Bool) {
+        guard let r = root, s > 0 else { return }
+        let rp = r.url.standardizedFileURL.pathComponents
+        let up = url.standardizedFileURL.pathComponents
+        guard up.count > rp.count, Array(up.prefix(rp.count)) == rp else { return }
+        var cur = r
+        for comp in up[rp.count...] {
+            guard let next = cur.children.first(where: { !$0.isAggregate && $0.name == comp }) else { break }
+            cur = next
+        }
+        // 小文件节点(如果有)跟着变小;没有的话只扣上级大小
+        if let agg = cur.children.first(where: { $0.isAggregate }) {
+            agg.size -= s
+            if agg.size <= 0 { cur.children.removeAll { $0 === agg } }
+        }
+        var t = [Int64](repeating: 0, count: Category.count)
+        if !isDir {
+            t[Category.of(ext: extKey(url), inApp: cur.isInsideApp).rawValue] = s
+            if var tot = r.extTotals?[extKey(url)] {
+                tot.bytes = max(0, tot.bytes - s)
+                tot.count = max(0, tot.count - 1)
+                r.extTotals?[extKey(url)] = tot
+            }
+        } else {
+            r.extTotals = nil
+        }
+        var p: Node? = cur
+        while let q = p {
+            q.size = max(0, q.size - s)
+            if q.cats.count == Category.count {
+                for i in 0..<Category.count { q.cats[i] = max(0, q.cats[i] - t[i]) }
+            }
+            p = q.parent
+        }
+    }
+
+    /// 当前所在的文件夹如果已被摘除(它自己或某个上级被移进了废纸篓),回到最近的还在树里的上级
+    private func recoverCurrent() {
+        guard let c = current else { return }
+        var chain: [Node] = []
+        var x: Node? = c
+        while let y = x { chain.append(y); x = y.parent }
+        for node in chain.reversed().dropFirst() {
+            if let par = node.parent, !par.children.contains(where: { $0 === node }) {
+                current = par
+                return
+            }
         }
     }
 
