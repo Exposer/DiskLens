@@ -69,6 +69,38 @@ enum AppTheme: String, CaseIterable, Identifiable {
         }
     }
 
+    /// 状态色:警告(橙)、危险 / 增加(红)、正常 / 减少(绿)。
+    /// 和主题一起调过,在米色纸张和深色背景上都看得清;「原始」主题仍用跟随系统明暗的系统色
+    var warn: Color {
+        switch self {
+        case .original: return .orange
+        case .paper: return Color(hex: 0xB7791F)
+        case .calm: return Color(hex: 0xA66A1E)
+        case .quiet: return Color(hex: 0xE0A94A)
+        case .night: return Color(hex: 0xFFB340)
+        }
+    }
+
+    var bad: Color {
+        switch self {
+        case .original: return .red
+        case .paper: return Color(hex: 0xB3402F)
+        case .calm: return Color(hex: 0xA33A2B)
+        case .quiet: return Color(hex: 0xE0705F)
+        case .night: return Color(hex: 0xFF6961)
+        }
+    }
+
+    var good: Color {
+        switch self {
+        case .original: return .green
+        case .paper: return Color(hex: 0x4F7A3A)
+        case .calm: return Color(hex: 0x4A6F36)
+        case .quiet: return Color(hex: 0x7FB069)
+        case .night: return Color(hex: 0x6CCB7A)
+        }
+    }
+
     /// 图表颜色的饱和度 / 亮度系数:暖色主题调得更柔和,像印刷的纸页
     var chartSat: Double {
         switch self {
@@ -123,6 +155,9 @@ func tr(_ zh: String, _ en: String) -> String {
 }
 
 var appAccent: Color { Prefs.theme.accent }
+var appWarn: Color { Prefs.theme.warn }
+var appBad: Color { Prefs.theme.bad }
+var appGood: Color { Prefs.theme.good }
 
 /// 带主题色调的 HSB 颜色(用于图表)
 func tc(_ h: Double, _ s: Double, _ b: Double) -> Color {

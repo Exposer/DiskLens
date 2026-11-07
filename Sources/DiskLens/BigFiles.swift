@@ -165,7 +165,7 @@ struct BigFileListView: View {
     /// 超过一年没修改的显示成橙色,提醒这是“很久没碰过”的文件
     private func ageColor(_ d: Date) -> Color {
         let oneYearAgo = Calendar.current.date(byAdding: .year, value: -1, to: Date()) ?? .distantPast
-        return d < oneYearAgo ? .orange : .secondary
+        return d < oneYearAgo ? appWarn : .secondary
     }
 
     private func row(rank: Int, _ bf: BigFile, maxSize: Int64) -> some View {

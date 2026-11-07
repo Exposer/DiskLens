@@ -376,7 +376,7 @@ struct DupListView: View {
                 if vm.dupStopped {
                     Text(tr("查找被中途停止,结果不完整。", "The search was stopped early, so results are incomplete."))
                         .font(.caption)
-                        .foregroundStyle(.orange)
+                        .foregroundStyle(appWarn)
                 }
                 Button {
                     vm.collectDuplicatesKeepingOldest()

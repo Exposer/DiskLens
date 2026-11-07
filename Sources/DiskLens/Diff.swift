@@ -227,8 +227,7 @@ struct DiffSheet: View {
     }
 
     private func deltaColor(_ d: Int64) -> Color {
-        d > 0 ? Color(hue: 0.0, saturation: 0.65, brightness: 0.9)
-              : Color(hue: 0.36, saturation: 0.6, brightness: 0.7)
+        d > 0 ? appBad : appGood
     }
 
     private func summary(_ r: DiffResult) -> some View {

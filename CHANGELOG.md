@@ -11,6 +11,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). `0.1.0`–`0.23.
 ### Added / 新增
 - `docs/release-notes-v1.1.md`: the bilingual release notes for 1.1. / 新增 `docs/release-notes-v1.1.md`:1.1 的中英文发布说明。
 
+### Changed / 变更
+- **Status colors follow the theme**: warning (orange), bad / grew (red) and good / shrank (green) in the banners, the Compare window, the Big files age marker, the duplicate finder and the menu bar are now tuned per color theme, so they read clearly on the Paper / Calm beige and the dark themes instead of using the same fixed system colors everywhere. The Original theme still uses the system colors. / **状态色跟随主题**:提示条、对比窗口、大文件的「很久没改」标记、重复文件查找和菜单栏里的警告(橙)、危险 / 增加(红)、正常 / 减少(绿)现在按配色主题分别调过,在「纸张」「柔和」的米色背景和深色主题上都看得清,不再到处用同一组固定的系统颜色。「原始」主题仍使用系统颜色。
+
 ## [1.1] - 2026-11-07
 
 ### Added / 新增

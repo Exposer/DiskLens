@@ -230,7 +230,7 @@ struct ContentView: View {
             : ""
         return HStack(spacing: 8) {
             Image(systemName: "exclamationmark.triangle.fill")
-                .foregroundStyle(.red)
+                .foregroundStyle(appBad)
             Text(tr("磁盘空间不足:只剩 \(formatSize(u.available)) 可用(\(pct)%)\(purge)。",
                     "Disk space is running low: only \(formatSize(u.available)) available (\(pct)%)\(purge)."))
                 .font(.callout)
@@ -243,7 +243,7 @@ struct ContentView: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 6)
-        .background(Color.red.opacity(0.14))
+        .background(appBad.opacity(0.14))
     }
 
     /// 扫描完成后的提示:和上一次扫描相比,总共多了 / 少了多少
@@ -252,7 +252,7 @@ struct ContentView: View {
         let amount = formatSize(abs(d.delta))
         let range = "\(formatSize(d.prevSize)) → \(formatSize(d.newSize))"
         let grew = d.delta > 0
-        let tint: Color = d.isUnchanged ? .secondary : (grew ? .orange : .green)
+        let tint: Color = d.isUnchanged ? .secondary : (grew ? appWarn : appGood)
         let message: String
         if d.isUnchanged {
             message = tr("和上次扫描(\(when))相比,基本没有变化。",
@@ -290,7 +290,7 @@ struct ContentView: View {
     private var unreadableBanner: some View {
         HStack(spacing: 8) {
             Image(systemName: "lock.trianglebadge.exclamationmark.fill")
-                .foregroundStyle(.orange)
+                .foregroundStyle(appWarn)
             Text(tr("有 \(vm.unreadableCount) 个目录因权限不足没能读取,总大小会偏小。授予「完全磁盘访问权限」后重新扫描。",
                     "\(vm.unreadableCount) folders couldn't be read (permission denied), so totals are underestimated. Grant Full Disk Access, then rescan."))
                 .font(.callout)
@@ -305,14 +305,14 @@ struct ContentView: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 6)
-        .background(Color.orange.opacity(0.14))
+        .background(appWarn.opacity(0.14))
         .help(vm.unreadableSamples.joined(separator: "\n"))
     }
 
     private var stoppedBanner: some View {
         HStack(spacing: 8) {
             Image(systemName: "exclamationmark.triangle.fill")
-                .foregroundStyle(.orange)
+                .foregroundStyle(appWarn)
             Text(tr("扫描已停止,当前显示的是不完整的结果,各文件夹的大小会偏小,也不会保存。",
                     "Scan stopped. The results are incomplete, folder sizes are underestimated, and they won't be saved."))
                 .font(.callout)
@@ -322,7 +322,7 @@ struct ContentView: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 6)
-        .background(Color.orange.opacity(0.14))
+        .background(appWarn.opacity(0.14))
     }
 
     /// 状态栏:窗口变窄时依次换成更紧凑的版本(权限链接缩成图标 → 容量图例合并成一个“可用”数字),

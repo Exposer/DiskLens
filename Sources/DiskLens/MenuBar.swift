@@ -223,7 +223,7 @@ struct MenuBarContent: View {
 
             if monitor.lowSpace != nil {
                 HStack(spacing: 6) {
-                    Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.red)
+                    Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(appBad)
                     Text(tr("磁盘空间不足", "Disk space is running low"))
                         .font(.callout.weight(.medium))
                 }
