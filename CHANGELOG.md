@@ -8,14 +8,15 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). `0.1.0`–`0.23.
 
 ## [Unreleased]
 
-### Changed / 变更
-- The 1.0 release notes now describe the prebuilt `DiskLens-1.0-macos-arm64.zip` download (Apple Silicon, signed with the author's certificate, not notarized) next to the build-from-source steps. / 1.0 的发布说明现在介绍预编译的 `DiskLens-1.0-macos-arm64.zip` 下载(Apple 芯片,用作者的证书签名,未公证),并保留从源码编译的步骤。
+## [1.1] - 2026-11-07
 
 ### Added / 新增
 - **Permission warning after a scan**: if some folders couldn't be read because of missing permissions (usually Full Disk Access), a banner says how many, with buttons to open the settings and to rescan; hover it to see example paths. Before, those folders silently counted as 0 bytes and the totals came out too small. / **扫描后的权限警告**:如果有目录因为权限不足(通常是没有「完全磁盘访问权限」)没能读取,会弹出提示条说明有多少个,并提供「打开设置」和「重新扫描」按钮,悬停可以看到示例路径。以前这些目录会被悄悄算成 0 字节,总大小因此偏小。
 - `docs/release-notes-v1.0.md`: the bilingual release notes for 1.0, so the GitHub release can be created with `gh release create v1.0 --notes-file docs/release-notes-v1.0.md`. / 新增 `docs/release-notes-v1.0.md`:1.0 的中英文发布说明,可以用 `gh release create v1.0 --notes-file docs/release-notes-v1.0.md` 创建 GitHub Release。
 
 ### Changed / 变更
+- The 1.0 release notes now describe the prebuilt `DiskLens-1.0-macos-arm64.zip` download (Apple Silicon, signed with the author's certificate, not notarized) next to the build-from-source steps. / 1.0 的发布说明现在介绍预编译的 `DiskLens-1.0-macos-arm64.zip` 下载(Apple 芯片,用作者的证书签名,未公证),并保留从源码编译的步骤。
+- The app version is now 1.1 (`make_app.sh`). / 应用版本号改为 1.1(`make_app.sh`)。
 - `.gitignore` now ignores `*.zip`, so a release package in the repo root can't be committed by accident. / `.gitignore` 现在会忽略 `*.zip`,放在仓库根目录的发布包不会被误提交。
 - **Smoother scrolling and hovering in file lists**: the "is it in the Collector" check no longer rebuilds and normalizes a path for every Collector item on every row redraw, and date formatters are created once per language instead of once per row. / **文件列表滚动和悬停更流畅**:判断「是否已在收集器里」时,不再每次重绘每一行都为每个收集项重建并标准化路径;日期格式化器也改成每种语言只创建一次,而不是每行创建一次。
 

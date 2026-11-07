@@ -22,7 +22,7 @@ for s in 16 32 128 256 512; do
   sips -z $((s*2)) $((s*2)) Resources/AppIcon.png --out "$ICONSET/icon_${s}x${s}@2x.png" >/dev/null
 done
 iconutil -c icns "$ICONSET" -o "$APP/Contents/Resources/AppIcon.icns"
-# build 号 = git 提交数:每次提交自动 +1,在「关于 DiskLens」里显示为 1.0 (build 号)
+# build 号 = git 提交数:每次提交自动 +1,在「关于 DiskLens」里显示为 1.1 (build 号)
 BUILD=$(git rev-list --count HEAD 2>/dev/null || echo 0)
 cat > "$APP/Contents/Info.plist" <<EOF
 <?xml version="1.0" encoding="UTF-8"?>
@@ -33,7 +33,7 @@ cat > "$APP/Contents/Info.plist" <<EOF
   <key>CFBundleName</key><string>DiskLens</string>
   <key>CFBundleIconFile</key><string>AppIcon</string>
   <key>CFBundlePackageType</key><string>APPL</string>
-  <key>CFBundleShortVersionString</key><string>1.0</string>
+  <key>CFBundleShortVersionString</key><string>1.1</string>
   <key>CFBundleVersion</key><string>$BUILD</string>
   <key>LSMinimumSystemVersion</key><string>13.0</string>
   <key>NSHighResolutionCapable</key><true/>
@@ -53,4 +53,4 @@ if [ "$SIGN_ID" = "-" ]; then
 fi
 ditto --norsrc --noextattr "$APP" "$OUT"
 rm -rf "$STAGE"
-echo "完成: $(pwd)/$OUT  (版本 1.0, build $BUILD)"
+echo "完成: $(pwd)/$OUT  (版本 1.1, build $BUILD)"
