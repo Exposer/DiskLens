@@ -8,6 +8,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). `0.1.0`–`0.23.
 
 ## [Unreleased]
 
+### Added / 新增
+- `docs/release-notes-v1.1.md`: the bilingual release notes for 1.1. / 新增 `docs/release-notes-v1.1.md`:1.1 的中英文发布说明。
+
 ## [1.1] - 2026-11-07
 
 ### Added / 新增
