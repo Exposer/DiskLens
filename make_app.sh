@@ -3,7 +3,7 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 # 版本号只在这里写一处:Info.plist 和最后的提示都用它
-VERSION="1.1"
+VERSION="1.2"
 # 编译产物放在 iCloud 同步范围之外:项目在 Documents 里时,.build 里成千上万个文件被同步会让编译慢到卡住
 BUILD_DIR="${DISKLENS_BUILD_DIR:-$HOME/Library/Caches/disklens-build}"
 swift build -c release --scratch-path "$BUILD_DIR"

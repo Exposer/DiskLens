@@ -8,7 +8,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). `0.1.0`–`0.23.
 
 ## [Unreleased]
 
+## [1.2] - 2026-11-14
+
 ### Added / 新增
+- `docs/release-notes-v1.2.md`: the bilingual release notes for 1.2. / 新增 `docs/release-notes-v1.2.md`:1.2 的中英文发布说明。
 - `docs/release-notes-v1.1.md`: the bilingual release notes for 1.1. / 新增 `docs/release-notes-v1.1.md`:1.1 的中英文发布说明。
 - **Unit tests** for the pure logic (treemap and ring layout, Compare, low-space thresholds, CSV export, the cache format, item paths). Run `swift test`; the packaging script does not build them. / 为纯逻辑加了**单元测试**(方块图和环形图布局、对比、空间不足阈值、CSV 导出、缓存格式、项目路径)。运行 `swift test`;打包脚本不会编译它们。
 
