@@ -5,6 +5,15 @@ func formatSize(_ bytes: Int64) -> String {
     ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file)
 }
 
+/// 在普通的 GCD 线程上跑阻塞式的长任务(遍历磁盘、算哈希),跑完再回到调用方。
+/// Swift 并发的协作线程池只有“核心数”那么多线程,而且假定任务不会长时间阻塞;
+/// 把整盘扫描、查重、统计占用大户直接放在 Task 里跑,会各自占住一个线程,同时进行时互相拖慢。
+func runBlocking<T>(qos: DispatchQoS.QoSClass, _ work: @escaping () -> T) async -> T {
+    await withCheckedContinuation { cont in
+        DispatchQueue.global(qos: qos).async { cont.resume(returning: work()) }
+    }
+}
+
 // MARK: - 数据模型
 
 final class Node: Identifiable, @unchecked Sendable {
@@ -647,6 +656,10 @@ final class ViewModel: ObservableObject {
     @Published var topFiles: [Node] = []        // “按类型”模式下,所选类型里最大的文件
     @Published var hogs: [HogItem] = []         // “占用大户”列表
     @Published var hogsLoading = false
+    /// 统计占用大户期间又来了刷新请求:记下来,这一轮结束后再跑一次(以前直接丢掉,列表会停在旧数字上)
+    var hogsQueued = false
+    /// 排队的那次刷新要重新统计哪些路径;nil = 全部重新统计
+    var hogsQueuedURLs: [URL]? = []
     /// 已保存的扫描结果(含历史快照)占用的磁盘空间,给状态栏的「清除缓存」按钮显示。
     /// 由 refreshCacheSize() 在后台统计:不能放在视图的初始值里算,那样每次重绘都会去读磁盘
     @Published var cacheSize: Int64 = 0
@@ -744,14 +757,17 @@ final class ViewModel: ObservableObject {
         timer?.tolerance = 0.1
 
         Task.detached(priority: .userInitiated) { [weak self] in
-            let r = s.scan(url)
+            let r = await runBlocking(qos: .userInitiated) { s.scan(url) }
             let date = Date()
             // 被取代的扫描结果会被丢弃,被停止的结果不完整、不保存:都不必白白拷一遍整棵树(峰值内存 2~3 倍)
             let stillCurrent = await MainActor.run { self?.scanner === s }
             guard stillCurrent else { return }
             // 先在后台生成可序列化的快照,界面更新后再写盘(此时 r 还没交给界面,没人会改它)
+            // 权限不足没读到的目录数也存进快照:从缓存载入时照样要提醒“总大小偏小”
+            let denied = s.unreadable
             let snap: ScanSnapshot? = s.wasCancelled
-                ? nil : ScanSnapshot(path: url.path, date: date, root: ScanStore.dto(r))
+                ? nil : ScanSnapshot(path: url.path, date: date, root: ScanStore.dto(r),
+                                     unreadable: denied.count, unreadableSamples: denied.samples)
             // 在写入新快照之前,取出上一次扫描的大小,用来提示“比上次多了多少”
             let prev = s.wasCancelled ? nil : ScanStore.previousSummary(for: url.path, before: date)
             let accepted = await MainActor.run { () -> Bool in
@@ -802,6 +818,8 @@ final class ViewModel: ObservableObject {
                     self.root = loaded.root
                     self.scanDate = loaded.date
                     self.isCached = true
+                    self.unreadableCount = loaded.unreadable
+                    self.unreadableSamples = loaded.samples
                     // 内存被释放之前停留的文件夹:沿着名字找回去
                     var node = loaded.root
                     for name in self.pendingPath {
@@ -866,7 +884,8 @@ final class ViewModel: ObservableObject {
             guard !Task.isCancelled, let self,
                   let r = self.root, !self.scanning, !self.scanStopped else { return }
             // 快照必须在主线程拍(树只有主线程在改);编码和写盘在后台
-            let snap = ScanSnapshot(path: r.url.path, date: self.scanDate ?? Date(), root: ScanStore.dto(r))
+            let snap = ScanSnapshot(path: r.url.path, date: self.scanDate ?? Date(), root: ScanStore.dto(r),
+                                    unreadable: self.unreadableCount, unreadableSamples: self.unreadableSamples)
             Task.detached(priority: .utility) { [weak self] in
                 try? ScanStore.writeLatest(snap)
                 await MainActor.run { self?.refreshCacheSize() }
@@ -891,6 +910,7 @@ final class ViewModel: ObservableObject {
 
     func trashItems(_ nodes: [Node]) {
         var failures: [String] = []
+        var trashed: [URL] = []      // 这次真正移走的路径:之后只重新统计和它们有关的占用大户
         for n in nodes {
             // 路径已经无从得知的节点(见 Node.isOrphan)绝不能拿去删
             if n.isOrphan {
@@ -899,7 +919,9 @@ final class ViewModel: ObservableObject {
                 continue
             }
             do {
-                try FileManager.default.trashItem(at: n.url, resultingItemURL: nil)
+                let url = n.url
+                try FileManager.default.trashItem(at: url, resultingItemURL: nil)
+                trashed.append(url)
                 // 占用大户这类独立节点不在扫描树里:按路径找到树里对应的节点再摘除
                 if n.parent != nil {
                     detach(n)
@@ -918,7 +940,8 @@ final class ViewModel: ObservableObject {
         rebuild()
         refreshTopFiles()
         saveCache()
-        if !hogs.isEmpty { refreshHogs() }
+        // 以前每删一样东西就把 20 个位置(包括整个 ~/Library/Caches、Docker 目录)全部重新量一遍
+        if !hogs.isEmpty, !trashed.isEmpty { refreshHogs(affecting: trashed) }
         if !dupGroups.isEmpty { pruneDuplicates() }
         refreshBigFiles()
         refreshExtStats()
@@ -1004,8 +1027,14 @@ final class ViewModel: ObservableObject {
             if q.cats.count == Category.count {
                 for i in 0..<Category.count { q.cats[i] = max(0, q.cats[i] - t[i]) }
             }
+            resort(q)
             p = q.parent
         }
+    }
+
+    /// q 变小了:它在同级里的位置可能不再符合“从大到小”,重新排一下
+    private func resort(_ q: Node) {
+        q.parent?.children.sort { $0.size > $1.size }
     }
 
     /// 从根节点的“精确扩展名总表”里扣掉被删除的节点。
@@ -1045,6 +1074,7 @@ final class ViewModel: ObservableObject {
         if let agg = cur.children.first(where: { $0.isAggregate }) {
             agg.size -= s
             if agg.size <= 0 { cur.children.removeAll { $0 === agg } }
+            cur.children.sort { $0.size > $1.size }
         }
         var t = [Int64](repeating: 0, count: Category.count)
         if !isDir {
@@ -1063,6 +1093,7 @@ final class ViewModel: ObservableObject {
             if q.cats.count == Category.count {
                 for i in 0..<Category.count { q.cats[i] = max(0, q.cats[i] - t[i]) }
             }
+            resort(q)
             p = q.parent
         }
     }

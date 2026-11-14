@@ -220,7 +220,9 @@ extension ViewModel {
         dupTimer?.tolerance = 0.1
 
         Task.detached(priority: .utility) { [weak self] in
-            let groups = DupFinder.find(root: folder, minSize: minSize, job: job)
+            let groups: [DupGroup] = await runBlocking(qos: .utility) {
+                DupFinder.find(root: folder, minSize: minSize, job: job)
+            }
             await MainActor.run {
                 guard let self, self.dupJob === job else { return }
                 self.dupTimer?.invalidate()

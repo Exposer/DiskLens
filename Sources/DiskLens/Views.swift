@@ -36,7 +36,8 @@ struct ContentView: View {
                 stoppedBanner
                 Divider()
             }
-            if vm.unreadableCount > 0 && !vm.scanning && !vm.scanStopped && !vm.isCached {
+            // 从缓存载入的结果同样要提醒:当时没读到的目录数现在随缓存一起保存
+            if vm.unreadableCount > 0 && !vm.scanning && !vm.scanStopped {
                 unreadableBanner
                 Divider()
             }

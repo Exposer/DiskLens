@@ -174,12 +174,17 @@ enum LaunchAtLogin {
         SMAppService.mainApp.status == .enabled
     }
 
-    static func set(_ on: Bool) {
-        guard available else { return }
+    /// 返回 nil 表示成功;失败时返回系统给的原因,由界面显示出来
+    /// (以前只写进日志,用户看到的只是开关自己弹了回去)
+    @discardableResult
+    static func set(_ on: Bool) -> String? {
+        guard available else { return nil }
         do {
             if on { try SMAppService.mainApp.register() } else { try SMAppService.mainApp.unregister() }
+            return nil
         } catch {
             NSLog("DiskLens: launch at login failed: \(error.localizedDescription)")
+            return error.localizedDescription
         }
     }
 }
@@ -211,6 +216,7 @@ struct MenuBarContent: View {
     @AppStorage("loginShowWindow") private var loginShowWindow = false
     @AppStorage("menuBarOnly") private var menuBarOnly = false
     @State private var launchAtLogin = LaunchAtLogin.isEnabled
+    @State private var loginError: String?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -256,7 +262,7 @@ struct MenuBarContent: View {
             Toggle(tr("开机时自动启动", "Launch at login"), isOn: Binding(
                 get: { launchAtLogin },
                 set: { on in
-                    LaunchAtLogin.set(on)
+                    loginError = LaunchAtLogin.set(on)
                     launchAtLogin = LaunchAtLogin.isEnabled
                 })
             )
@@ -266,6 +272,14 @@ struct MenuBarContent: View {
             .help(LaunchAtLogin.available
                   ? tr("登录 Mac 后自动在菜单栏启动 DiskLens", "Start DiskLens in the menu bar when you log in")
                   : tr("只有打包后的 DiskLens.app 才能设置开机启动", "Only the packaged DiskLens.app can launch at login"))
+
+            if let e = loginError {
+                Text(tr("设置开机启动失败:\(e)。可以到「系统设置 → 通用 → 登录项」里手动添加。",
+                        "Couldn't change launch at login: \(e). You can add DiskLens manually in System Settings → General → Login Items."))
+                    .font(.caption)
+                    .foregroundStyle(appBad)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
 
             Toggle(tr("开机启动时显示窗口", "Show the window when launched at login"), isOn: $loginShowWindow)
                 .toggleStyle(.checkbox)

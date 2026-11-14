@@ -1,7 +1,9 @@
 #!/bin/bash
 # 编译并打包成 DiskLens.app,可拖进「应用程序」
-set -e
+set -euo pipefail
 cd "$(dirname "$0")"
+# 版本号只在这里写一处:Info.plist 和最后的提示都用它
+VERSION="1.1"
 # 编译产物放在 iCloud 同步范围之外:项目在 Documents 里时,.build 里成千上万个文件被同步会让编译慢到卡住
 BUILD_DIR="${DISKLENS_BUILD_DIR:-$HOME/Library/Caches/disklens-build}"
 swift build -c release --scratch-path "$BUILD_DIR"
@@ -10,19 +12,18 @@ swift build -c release --scratch-path "$BUILD_DIR"
 OUT=DiskLens.app
 STAGE="$(mktemp -d)"
 APP="$STAGE/DiskLens.app"
-rm -rf "$OUT"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$BUILD_DIR/release/DiskLens" "$APP/Contents/MacOS/DiskLens"
 
 # 由 Resources/AppIcon.png (1024x1024) 生成 AppIcon.icns
-ICONSET="$(mktemp -d)/AppIcon.iconset"
+ICONSET="$STAGE/AppIcon.iconset"
 mkdir -p "$ICONSET"
 for s in 16 32 128 256 512; do
   sips -z $s $s Resources/AppIcon.png --out "$ICONSET/icon_${s}x${s}.png" >/dev/null
   sips -z $((s*2)) $((s*2)) Resources/AppIcon.png --out "$ICONSET/icon_${s}x${s}@2x.png" >/dev/null
 done
 iconutil -c icns "$ICONSET" -o "$APP/Contents/Resources/AppIcon.icns"
-# build 号 = git 提交数:每次提交自动 +1,在「关于 DiskLens」里显示为 1.1 (build 号)
+# build 号 = git 提交数:每次提交自动 +1,在「关于 DiskLens」里显示为 版本号 (build 号)
 BUILD=$(git rev-list --count HEAD 2>/dev/null || echo 0)
 cat > "$APP/Contents/Info.plist" <<EOF
 <?xml version="1.0" encoding="UTF-8"?>
@@ -33,7 +34,7 @@ cat > "$APP/Contents/Info.plist" <<EOF
   <key>CFBundleName</key><string>DiskLens</string>
   <key>CFBundleIconFile</key><string>AppIcon</string>
   <key>CFBundlePackageType</key><string>APPL</string>
-  <key>CFBundleShortVersionString</key><string>1.1</string>
+  <key>CFBundleShortVersionString</key><string>$VERSION</string>
   <key>CFBundleVersion</key><string>$BUILD</string>
   <key>LSMinimumSystemVersion</key><string>13.0</string>
   <key>NSHighResolutionCapable</key><true/>
@@ -51,6 +52,8 @@ codesign --force --sign "$SIGN_ID" "$APP"
 if [ "$SIGN_ID" = "-" ]; then
   echo "提示: 使用的是临时签名,每次重新打包后都需要重新授予「完全磁盘访问权限」。设置 DISKLENS_SIGN_IDENTITY 可避免。"
 fi
+# 到这里新包已经组装并签好名,才替换掉旧的(以前一开始就删,签名失败时连旧包都没了)
+rm -rf "$OUT"
 ditto --norsrc --noextattr "$APP" "$OUT"
 rm -rf "$STAGE"
-echo "完成: $(pwd)/$OUT  (版本 1.1, build $BUILD)"
+echo "完成: $(pwd)/$OUT  (版本 $VERSION, build $BUILD)"

@@ -1,6 +1,6 @@
 # DiskLens — instructions for Claude / 给 Claude 的项目约定
 
-A native macOS (SwiftUI, Swift 5.9, macOS 13+) disk-usage analyzer. Package layout: `Sources/DiskLens/*.swift`, `Resources/AppIcon.png`, `make_app.sh`.
+A native macOS (SwiftUI, Swift 5.9, macOS 13+) disk-usage analyzer. Package layout: `Sources/DiskLens/*.swift`, `Tests/DiskLensTests/*.swift`, `Resources/AppIcon.png`, `make_app.sh`.
 
 ## Changelog rule (mandatory) / 更新日志规则(必须遵守)
 
@@ -27,6 +27,11 @@ git config core.hooksPath .githooks
 - Scan results are cached in `~/Library/Application Support/DiskLens/`; if the cached data shape changes, invalidate old caches (see `ScanStore.load`).
 - The app icon is generated from `Resources/AppIcon.png` (1024×1024) by `make_app.sh`.
 - This repo is usually edited from a Linux cloud session without the Swift toolchain, so code can't be compiled there. Say so honestly in replies; the user compiles on their Mac.
+
+## Tests / 测试
+
+- Pure-logic unit tests live in `Tests/DiskLensTests` (layout, compare, thresholds, export, cache format). Run `swift test` (needs full Xcode for XCTest; `make_app.sh` does not build them). / 纯逻辑的单元测试在 `Tests/DiskLensTests`(布局、对比、阈值、导出、缓存格式)。运行 `swift test`(XCTest 需要完整的 Xcode;`make_app.sh` 不会编译测试)。
+- When you fix a bug in pure logic, add a test that would have caught it. Anything that touches the real disk or the UI is verified by running the app. / 修纯逻辑里的 bug 时,补一个能抓住它的测试;涉及真实磁盘或界面的部分靠运行应用来验证。
 
 ## Packaging / 打包
 

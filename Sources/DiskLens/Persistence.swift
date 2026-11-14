@@ -19,6 +19,10 @@ struct ScanSnapshot: Codable {
     var path: String       // 被扫描的根目录
     var date: Date
     var root: NodeDTO
+    /// 扫描时因权限不足没读到的目录数和几个样例路径(旧缓存没有这两项)。
+    /// 这些目录按 0 字节计,所以从缓存载入时也要提醒“总大小偏小”
+    var unreadable: Int? = nil
+    var unreadableSamples: [String]? = nil
 }
 
 enum ScanStore {
@@ -83,11 +87,31 @@ enum ScanStore {
         return (snap.date, snap.root.s)
     }
 
+    // MARK: 压缩
+    //
+    // 快照是整棵扫描树的 JSON,整盘扫描时一份就有几十 MB,每个文件夹还要另存最多 maxHistory 份历史。
+    // 一个帮人清理磁盘的工具不该自己占掉几百 MB,所以写盘前用系统自带的 LZFSE 压缩(JSON 通常能缩到几分之一)。
+    // 文件名不变;读取时两种都认:以 `{` 开头的是旧版本写的未压缩 JSON,其余按 LZFSE 解压。
+
+    /// 快照 → 要写进文件的数据(压缩失败就存原始 JSON)
+    static func pack(_ snap: ScanSnapshot) throws -> Data {
+        let json = try JSONEncoder().encode(snap)
+        if let compressed = try? (json as NSData).compressed(using: .lzfse) { return compressed as Data }
+        return json
+    }
+
+    /// 文件里的数据 → JSON(认不出来返回 nil)
+    static func unpack(_ data: Data) -> Data? {
+        if data.first == UInt8(ascii: "{") { return data }
+        return try? (data as NSData).decompressed(using: .lzfse) as Data
+    }
+
     /// 解码一份快照。文件用内存映射读取(不在堆里再复制一份),并且函数返回时原始数据就已释放,
     /// 不会和随后构建的节点树同时占着内存。
     private static func decode(at url: URL) -> ScanSnapshot? {
-        guard let data = try? Data(contentsOf: url, options: .mappedIfSafe) else { return nil }
-        return try? JSONDecoder().decode(ScanSnapshot.self, from: data)
+        guard let raw = try? Data(contentsOf: url, options: .mappedIfSafe),
+              let json = unpack(raw) else { return nil }
+        return try? JSONDecoder().decode(ScanSnapshot.self, from: json)
     }
 
     /// 新扫描完成、写入之前:上一次扫描的日期和总大小,用来提示“比上次多了多少”
@@ -155,7 +179,7 @@ enum ScanStore {
     /// 只更新“最新结果”(清理文件之后用;不产生新的历史快照)
     static func writeLatest(_ snap: ScanSnapshot) throws {
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        let data = try JSONEncoder().encode(snap)
+        let data = try pack(snap)
         try data.write(to: fileURL(for: snap.path), options: .atomic)
     }
 
@@ -168,12 +192,14 @@ enum ScanStore {
         let latest = fileURL(for: snap.path)
         if history(for: snap.path).isEmpty,
            let oldData = try? Data(contentsOf: latest, options: .mappedIfSafe),
-           let old = try? JSONDecoder().decode(ScanSnapshot.self, from: oldData),
+           let oldJSON = unpack(oldData),
+           let old = try? JSONDecoder().decode(ScanSnapshot.self, from: oldJSON),
            old.path == snap.path, old.version >= 2 {
+            // 原样拷过去:旧文件是压缩过的还是没压缩的,读取时都认
             try? oldData.write(to: historyFile(snap.path, date: old.date, size: old.root.s), options: .atomic)
         }
 
-        let data = try JSONEncoder().encode(snap)
+        let data = try pack(snap)
         try data.write(to: latest, options: .atomic)
         try data.write(to: historyFile(snap.path, date: snap.date, size: snap.root.s), options: .atomic)
 
@@ -182,14 +208,14 @@ enum ScanStore {
         }
     }
 
-    static func load(path: String) -> (root: Node, date: Date)? {
+    static func load(path: String) -> (root: Node, date: Date, unreadable: Int, samples: [String])? {
         guard let snap = decode(at: fileURL(for: path)),
               snap.version == 2 || snap.version == 3,
               snap.path == path,
               // 文件类型数量变了(比如新版本增加了分类),旧缓存作废
               snap.root.c?.count == Category.count else { return nil }
         let root = node(from: snap.root, url: URL(fileURLWithPath: path), parent: nil)
-        return (root, snap.date)
+        return (root, snap.date, snap.unreadable ?? 0, snap.unreadableSamples ?? [])
     }
 
     /// 已保存的扫描结果占用的磁盘空间

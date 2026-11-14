@@ -190,24 +190,56 @@ enum HogScanner {
 }
 
 extension ViewModel {
-    func refreshHogs() {
-        guard !hogsLoading else { return }
+    /// 重新统计占用大户。
+    /// `changed`:刚被移走的路径。给了它,就只重新统计和这些路径有重叠的位置,其余沿用上次的大小;
+    /// 不给(nil)则全部重新统计。
+    func refreshHogs(affecting changed: [URL]? = nil) {
+        if hogsLoading {
+            // 正在统计:记下这次请求,这一轮结束后再跑。多次请求合并成一次
+            if hogsQueued {
+                if let c = changed, let q = hogsQueuedURLs { hogsQueuedURLs = q + c } else { hogsQueuedURLs = nil }
+            } else {
+                hogsQueued = true
+                hogsQueuedURLs = changed
+            }
+            return
+        }
         hogsLoading = true
         let home = FileManager.default.homeDirectoryForCurrentUser
+        let previous = hogs
         Task.detached(priority: .utility) { [weak self] in
-            let fm = FileManager.default
-            let defs = HogCatalog.all.filter { fm.fileExists(atPath: home.appendingPathComponent($0.path).path) }
-            var results = [HogItem?](repeating: nil, count: defs.count)
-            let lock = NSLock()
-            DispatchQueue.concurrentPerform(iterations: defs.count) { i in
-                let url = home.appendingPathComponent(defs[i].path)
-                let item = HogItem(def: defs[i], url: url, size: HogScanner.size(of: url))
-                lock.lock(); results[i] = item; lock.unlock()
+            let items: [HogItem] = await runBlocking(qos: .utility) {
+                let fm = FileManager.default
+                let defs = HogCatalog.all.filter { fm.fileExists(atPath: home.appendingPathComponent($0.path).path) }
+                var results = [HogItem?](repeating: nil, count: defs.count)
+                let lock = NSLock()
+                DispatchQueue.concurrentPerform(iterations: defs.count) { i in
+                    let url = home.appendingPathComponent(defs[i].path)
+                    // 和被移走的路径没有重叠、而且上次量过:大小不会变,不用再遍历一遍
+                    let unaffected = changed.map { list in
+                        !list.contains { urlIsInside($0, of: url) || urlIsInside(url, of: $0) }
+                    } ?? false
+                    let size: Int64
+                    if unaffected, let old = previous.first(where: { $0.id == defs[i].id }) {
+                        size = old.size
+                    } else {
+                        size = HogScanner.size(of: url)
+                    }
+                    let item = HogItem(def: defs[i], url: url, size: size)
+                    lock.lock(); results[i] = item; lock.unlock()
+                }
+                return results.compactMap { $0 }.filter { $0.size > 0 }.sorted { $0.size > $1.size }
             }
-            let items = results.compactMap { $0 }.filter { $0.size > 0 }.sorted { $0.size > $1.size }
             await MainActor.run {
-                self?.hogs = items
-                self?.hogsLoading = false
+                guard let self else { return }
+                self.hogs = items
+                self.hogsLoading = false
+                if self.hogsQueued {
+                    let next = self.hogsQueuedURLs
+                    self.hogsQueued = false
+                    self.hogsQueuedURLs = []
+                    self.refreshHogs(affecting: next)
+                }
             }
         }
     }

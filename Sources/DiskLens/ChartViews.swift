@@ -366,15 +366,37 @@ struct TreeListView: View {
     let current: Node
     @State private var expanded: Set<ObjectIdentifier> = []
 
-    private struct Row: Identifiable {
+    fileprivate struct Row: Identifiable {
         let node: Node
         let depth: Int
         let hue: Double          // 和环形图 / 方块图同一套色相
         var id: ObjectIdentifier { node.id }
     }
 
+    /// 行列表的缓存。鼠标每移过一行,整个视图都会重绘一次;以前每次重绘都要把所有可见行重建一遍,
+    /// 展开了有几万个子项的文件夹时会明显卡顿。行只取决于:当前文件夹、展开了哪些节点、树有没有变。
+    fileprivate final class RowCache {
+        var version = -1
+        var root: ObjectIdentifier?
+        var expanded: Set<ObjectIdentifier> = []
+        var rows: [Row] = []
+    }
+    @State private var cache = RowCache()
+
     /// 只展开用户点开的节点,其余不遍历,大树也很快
     private func rows() -> [Row] {
+        if cache.version == vm.segmentsVersion, cache.root == current.id, cache.expanded == expanded {
+            return cache.rows
+        }
+        let out = buildRows()
+        cache.version = vm.segmentsVersion
+        cache.root = current.id
+        cache.expanded = expanded
+        cache.rows = out
+        return out
+    }
+
+    private func buildRows() -> [Row] {
         var out: [Row] = []
         func walk(_ n: Node, _ depth: Int, _ hue: Double?) {
             for (i, c) in n.children.enumerated() {
