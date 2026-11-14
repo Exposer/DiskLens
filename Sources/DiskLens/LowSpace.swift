@@ -88,24 +88,29 @@ final class DiskMonitor: ObservableObject {
         guard timer == nil else { return }
         if Prefs.lowRule != .off && Prefs.lowNotify { Notifier.requestAuthIfNeeded() }
         check()
-        timer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in
+        // 窗口状态栏的容量条也用这里的数字(它以前自己每 5 秒读一次),所以检查得比原来的 60 秒勤一些。
+        // 读一次容量只是一个很轻的系统调用,而且下面只在数字真的变了才通知界面
+        timer = Timer.scheduledTimer(withTimeInterval: 15, repeats: true) { [weak self] _ in
             Task { @MainActor in self?.check() }
         }
-        timer?.tolerance = 15      // 允许系统把唤醒和别的任务合并,省电
+        timer?.tolerance = 5       // 允许系统把唤醒和别的任务合并,省电
     }
 
-    /// 检查一次;设置改变后也会马上调用
+    /// 检查一次;设置改变后也会马上调用。
+    /// 所有 @Published 属性都只在值变了的时候才赋值:赋值就会让所有观察它的界面重绘,
+    /// 而绝大多数检查什么都没变
     func check() {
-        usage = VolumeUsage.read()
-        guard Prefs.lowRule != .off, let u = usage, Prefs.lowRule.isLow(u) else {
-            lowSpace = nil
-            dismissed = false      // 空间恢复后,下次再不足会重新提醒
+        let now = VolumeUsage.read()
+        if usage != now { usage = now }
+        guard Prefs.lowRule != .off, let u = now, Prefs.lowRule.isLow(u) else {
+            if lowSpace != nil { lowSpace = nil }
+            if dismissed { dismissed = false }      // 空间恢复后,下次再不足会重新提醒
             return
         }
         let wasLow = lowSpace != nil
-        lowSpace = u
+        if lowSpace != u { lowSpace = u }
         if !wasLow {
-            dismissed = false
+            if dismissed { dismissed = false }
             notify(u)
         }
     }

@@ -90,7 +90,10 @@ struct ContentView: View {
                 .allowsHitTesting(false)
             }
         }
-        .onAppear { vm.loadCachedOrScan() }
+        .onAppear {
+            vm.loadCachedOrScan()
+            vm.refreshCacheSize()
+        }
         .sheet(isPresented: $vm.showDiff) { DiffSheet(vm: vm) }
         .alert(tr("移到废纸篓?", "Move to Trash?"), isPresented: Binding(
             get: { vm.pendingTrash != nil },
@@ -339,7 +342,7 @@ struct ContentView: View {
 
     private func statusRow(compactCapacity: Bool, shortLink: Bool) -> some View {
         HStack(spacing: 12) {
-            CapacityBar(compact: compactCapacity)
+            CapacityBar(monitor: monitor, compact: compactCapacity)
             LowSpaceMenu(monitor: monitor)
             Spacer(minLength: 8)
             CacheButton(vm: vm)
@@ -378,10 +381,12 @@ struct ContentView: View {
 
 struct CacheButton: View {
     @ObservedObject var vm: ViewModel
-    @State private var size: Int64 = ScanStore.totalSize()
     @State private var confirm = false
 
     var body: some View {
+        // 大小由 ViewModel 在后台统计(见 refreshCacheSize)。以前写成 `@State var size = ScanStore.totalSize()`,
+        // 这个初始值每次构造视图都会执行;状态栏有三个候选版本,鼠标每移过一行就在主线程列三遍缓存目录。
+        let size = vm.cacheSize
         Button {
             confirm = true
         } label: {
@@ -397,19 +402,11 @@ struct CacheButton: View {
         .disabled(size == 0)
         .help(tr("删除已保存的扫描结果。当前窗口里的结果不受影响,下次启动会重新扫描。",
                  "Delete saved scan results. The results in this window are unaffected; the next launch will rescan."))
-        .onChange(of: vm.scanDate) { _ in
-            // 扫描结果在界面更新之后才写盘,稍等一会儿再刷新大小
-            Task {
-                try? await Task.sleep(nanoseconds: 1_500_000_000)
-                size = ScanStore.totalSize()
-            }
-        }
-        .onAppear { size = ScanStore.totalSize() }
         .alert(tr("清除已保存的扫描结果?", "Clear saved scan results?"), isPresented: $confirm) {
             Button(tr("取消", "Cancel"), role: .cancel) {}
             Button(tr("清除", "Clear"), role: .destructive) {
                 ScanStore.clearAll()
-                size = ScanStore.totalSize()
+                vm.refreshCacheSize()
             }
         } message: {
             Text(tr("只会删除 DiskLens 自己保存的缓存文件(包括用于「对比」的历史快照),不会动你的任何文件。下次启动会重新扫描。",
@@ -687,8 +684,20 @@ struct CollectorView: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
-        .onDrop(of: [.plainText], isTargeted: $dropTargeted) { _ in
-            if let n = vm.dragging { vm.collect(n); vm.dragging = nil }
+        .onDrop(of: [.plainText], isTargeted: $dropTargeted) { providers in
+            // 只接受 DiskLens 自己列表里拖出来的那一行。以前不看拖进来的是什么:
+            // 拖过一行但没放进来,之后从别的应用拖一段文字过来,那一行就会被收集。
+            // 现在要求拖入的文字正是那一行的名字,并且不管成不成功,这次拖拽都到此结束。
+            guard let n = vm.dragging, let p = providers.first else {
+                vm.dragging = nil
+                return false
+            }
+            vm.dragging = nil
+            let expected = n.displayName
+            _ = p.loadObject(ofClass: NSString.self) { obj, _ in
+                guard let text = obj as? NSString, (text as String) == expected else { return }
+                Task { @MainActor in vm.collect(n) }
+            }
             return true
         }
     }

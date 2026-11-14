@@ -43,9 +43,15 @@ final class Node: Identifiable, @unchecked Sendable {
 
     var url: URL {
         if let u = storedURL { return u }
-        guard let p = parent else { return URL(fileURLWithPath: name) }
+        // 上级已经不在了(旧扫描树被换掉后还被别处拿着的节点):返回一个不可能存在的路径。
+        // 以前这里返回的是相对路径 `name`,会被解析成“当前工作目录下的同名项目”,
+        // 万一拿去移进废纸篓,动的就是一个不相干的文件。
+        guard let p = parent else { return URL(fileURLWithPath: "/dev/null/detached/" + name) }
         return isAggregate ? p.url : p.url.appendingPathComponent(name, isDirectory: isDir)
     }
+
+    /// 既没有自己的 URL、上级也已经释放:它的路径已经无从得知,不能再收集或删除
+    var isOrphan: Bool { storedURL == nil && parent == nil }
 
     /// 已经挂到上级下面之后,丢掉自己保存的 URL(之后按需拼出)
     func releaseURL() { if parent != nil { storedURL = nil } }
@@ -440,24 +446,32 @@ final class DiskScanner: @unchecked Sendable {
                     let name = String(cString: (q + Int(ref.attr_dataoffset)).assumingMemoryBound(to: CChar.self))
                     q += MemoryLayout<attrreference_t>.size
 
+                    // 用了 FSOPT_PACK_INVAL_ATTRS:请求的每个属性都会占位(文件系统不支持的填默认值),
+                    // 所以指针必须无条件前进;`returned` 只用来判断读到的值是否有效。
+                    // 以前这四项只在“已返回”时才前进:APFS 总会返回所以没事,但在不返回其中某项的文件系统上
+                    //(外接盘的 exFAT、网络卷的 SMB / NFS)后面的字段会整体错位,类型和大小读成垃圾值。
                     var dev: UInt32 = 0
                     if returned.commonattr & attrgroup_t(ATTR_CMN_DEVID) != 0 {
-                        dev = q.loadUnaligned(as: UInt32.self); q += 4
+                        dev = q.loadUnaligned(as: UInt32.self)
                     }
+                    q += 4
                     var type: UInt32 = 0
                     if returned.commonattr & attrgroup_t(ATTR_CMN_OBJTYPE) != 0 {
-                        type = q.loadUnaligned(as: UInt32.self); q += 4
+                        type = q.loadUnaligned(as: UInt32.self)
                     }
+                    q += 4
                     var mod: Date?
                     if returned.commonattr & attrgroup_t(ATTR_CMN_MODTIME) != 0 {
-                        let ts = q.loadUnaligned(as: timespec.self); q += MemoryLayout<timespec>.size
+                        let ts = q.loadUnaligned(as: timespec.self)
                         mod = Date(timeIntervalSince1970: Double(ts.tv_sec) + Double(ts.tv_nsec) / 1e9)
                     }
+                    q += MemoryLayout<timespec>.size
                     var fileID: UInt64 = 0
                     if returned.commonattr & attrgroup_t(ATTR_CMN_FILEID) != 0 {
-                        fileID = q.loadUnaligned(as: UInt64.self); q += 8
+                        fileID = q.loadUnaligned(as: UInt64.self)
                     }
-                    // 用了 FSOPT_PACK_INVAL_ATTRS:没有的属性(如目录的文件属性)也占位,所以链接数的 4 字节总是要跳过
+                    q += 8
+                    // 文件属性同理:目录没有链接数 / 占用大小,但 4 + 8 字节照样占位
                     var linkCount: UInt32 = 1
                     if returned.fileattr & attrgroup_t(ATTR_FILE_LINKCOUNT) != 0 {
                         linkCount = q.loadUnaligned(as: UInt32.self)
@@ -633,6 +647,9 @@ final class ViewModel: ObservableObject {
     @Published var topFiles: [Node] = []        // “按类型”模式下,所选类型里最大的文件
     @Published var hogs: [HogItem] = []         // “占用大户”列表
     @Published var hogsLoading = false
+    /// 已保存的扫描结果(含历史快照)占用的磁盘空间,给状态栏的「清除缓存」按钮显示。
+    /// 由 refreshCacheSize() 在后台统计:不能放在视图的初始值里算,那样每次重绘都会去读磁盘
+    @Published var cacheSize: Int64 = 0
     @Published var unreadableCount = 0          // 上次扫描里因权限不足打不开的目录数(结果会偏小)
     @Published var unreadableSamples: [String] = []
     @Published var scanStopped = false          // 扫描被手动停止,当前结果不完整
@@ -706,6 +723,8 @@ final class ViewModel: ObservableObject {
         scanner = s
         target = url
         root = nil; current = nil; hovered = nil
+        // 旧扫描树马上要被换掉:所有还拿着旧节点的地方都清掉
+        dragging = nil; dragNode = nil; dragPoint = nil; pendingTrash = nil
         collected = []; scanningPath = ""; selectedCategory = nil; selectedExt = nil
         isCached = false; scanDate = nil; scanStopped = false; scanDelta = nil
         unreadableCount = 0; unreadableSamples = []
@@ -751,7 +770,20 @@ final class ViewModel: ObservableObject {
                 return true
             }
             // 被取消的扫描结果不完整,不保存
-            if accepted, !s.wasCancelled, let snap { try? ScanStore.write(snap) }
+            if accepted, !s.wasCancelled, let snap {
+                try? ScanStore.write(snap)
+                await MainActor.run { self?.refreshCacheSize() }
+            }
+        }
+    }
+
+    /// 在后台统计缓存目录的大小(要列目录、逐个读文件大小),算完再回主线程更新
+    func refreshCacheSize() {
+        Task.detached(priority: .utility) { [weak self] in
+            let size = ScanStore.totalSize()
+            await MainActor.run {
+                if self?.cacheSize != size { self?.cacheSize = size }
+            }
         }
     }
 
@@ -801,6 +833,7 @@ final class ViewModel: ObservableObject {
         else { return }
         pendingPath = trail.dropFirst().map { $0.name }
         hovered = nil
+        dragging = nil
         topFiles = []; bigFiles = []; extStats = []; extHighlight = [:]
         scanner = nil          // 连同它保存的扩展名总表一起释放
         current = nil          // 触发 rebuild():环形图分段清空
@@ -834,7 +867,10 @@ final class ViewModel: ObservableObject {
                   let r = self.root, !self.scanning, !self.scanStopped else { return }
             // 快照必须在主线程拍(树只有主线程在改);编码和写盘在后台
             let snap = ScanSnapshot(path: r.url.path, date: self.scanDate ?? Date(), root: ScanStore.dto(r))
-            Task.detached(priority: .utility) { try? ScanStore.writeLatest(snap) }
+            Task.detached(priority: .utility) { [weak self] in
+                try? ScanStore.writeLatest(snap)
+                await MainActor.run { self?.refreshCacheSize() }
+            }
         }
     }
     private var saveCacheTask: Task<Void, Never>?
@@ -856,6 +892,12 @@ final class ViewModel: ObservableObject {
     func trashItems(_ nodes: [Node]) {
         var failures: [String] = []
         for n in nodes {
+            // 路径已经无从得知的节点(见 Node.isOrphan)绝不能拿去删
+            if n.isOrphan {
+                failures.append("\(n.name): " + tr("找不到这个项目的位置,请重新扫描", "its location is no longer known; please rescan"))
+                collected.removeAll { $0 === n }
+                continue
+            }
             do {
                 try FileManager.default.trashItem(at: n.url, resultingItemURL: nil)
                 // 占用大户这类独立节点不在扫描树里:按路径找到树里对应的节点再摘除
@@ -941,7 +983,7 @@ final class ViewModel: ObservableObject {
     }
 
     func collect(_ n: Node) {
-        guard !n.isAggregate else { return }
+        guard !n.isAggregate, !n.isOrphan else { return }
         // 已收集了它的上级目录(或它本身):不重复计算
         if isCollected(n) { return }
         // 收集了上级目录:把已收集的子项合并掉

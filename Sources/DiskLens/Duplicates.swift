@@ -83,14 +83,19 @@ enum DupFinder {
         if job.isCancelled { return [] }
 
         // 2. 只保留大小相同的组;硬链接(同一个 inode)不算重复,因为不占额外空间
+        // SF_DATALESS:内容还没下载到本地的云文件(iCloud「优化储存空间」、Dropbox / OneDrive 的在线文件)。
+        // 读它们会触发下载(离线时则读取失败),而且它们本来就不占本地空间,所以不参与比对。
+        let dataless: UInt32 = 0x4000_0000
         var candidates: [(Int64, [DupFile])] = []
         for (size, files) in bySize where files.count >= 2 {
             var ids = Set<String>()
             var uniq: [DupFile] = []
             for f in files {
-                let a = try? fm.attributesOfItem(atPath: f.url.path)
-                let id = "\(a?[.systemNumber] ?? 0)-\(a?[.systemFileNumber] ?? 0)"
-                if ids.insert(id).inserted { uniq.append(f) }
+                var st = stat()
+                // 查不到属性的文件直接不比对(以前会被当成同一个文件处理)
+                guard lstat(f.url.path, &st) == 0 else { continue }
+                if st.st_flags & dataless != 0 { continue }
+                if ids.insert("\(st.st_dev)-\(st.st_ino)").inserted { uniq.append(f) }
             }
             if uniq.count >= 2 { candidates.append((size, uniq)) }
         }
@@ -156,23 +161,37 @@ enum DupFinder {
         // 只读一遍的文件不要塞满系统文件缓存,否则会把其他程序用的缓存挤出去
         _ = fcntl(h.fileDescriptor, F_NOCACHE, 1)
         var hasher = SHA256()
-        if partial {
-            let part = 64 * 1024
-            if let d = try? h.read(upToCount: part) { hasher.update(data: d) }
-            if size > Int64(part * 2) {
-                try? h.seek(toOffset: UInt64(size) - UInt64(part))
-                if let d = try? h.read(upToCount: part) { hasher.update(data: d) }
-            }
-        } else {
-            while !job.isCancelled {
-                let more: Bool = autoreleasepool {
-                    guard let d = try? h.read(upToCount: 1 << 20), !d.isEmpty else { return false }
-                    hasher.update(data: d)
-                    return true
+        // 任何读取错误、或者读到的字节数和文件大小对不上(文件在比对期间被改了),都返回 nil:
+        // 这个文件不参与分组。绝不能把“读不出来”当成“读完了”——否则两个都读不出来的文件
+        // 会得到同样的哈希,被当成内容相同的重复文件。
+        do {
+            if partial {
+                let part = 64 * 1024
+                let head = try h.read(upToCount: part) ?? Data()
+                guard Int64(head.count) == min(Int64(part), size) else { return nil }
+                hasher.update(data: head)
+                if size > Int64(part * 2) {
+                    try h.seek(toOffset: UInt64(size) - UInt64(part))
+                    let tail = try h.read(upToCount: part) ?? Data()
+                    guard tail.count == part else { return nil }
+                    hasher.update(data: tail)
                 }
-                if !more { break }
+            } else {
+                var total: Int64 = 0
+                while true {
+                    if job.isCancelled { return nil }
+                    let n: Int = try autoreleasepool {
+                        guard let d = try h.read(upToCount: 1 << 20), !d.isEmpty else { return 0 }
+                        hasher.update(data: d)
+                        return d.count
+                    }
+                    if n == 0 { break }
+                    total += Int64(n)
+                }
+                guard total == size else { return nil }
             }
-            if job.isCancelled { return nil }
+        } catch {
+            return nil
         }
         return hasher.finalize().map { String(format: "%02x", $0) }.joined()
     }
@@ -293,8 +312,8 @@ struct DupListView: View {
             Divider()
             switch vm.dupState {
             case .idle:
-                Text(tr("选择最小文件大小,然后点「开始查找」。\n\n只读取文件内容来比对,不会修改任何文件。为安全起见,不包含应用包内部、.git、node_modules 和 ~/Library。硬链接不算重复。",
-                        "Pick a minimum file size, then click Find Duplicates.\n\nFiles are only read for comparison, never modified. For safety, app bundles, .git, node_modules and ~/Library are skipped. Hard links are not counted as duplicates."))
+                Text(tr("选择最小文件大小,然后点「开始查找」。\n\n只读取文件内容来比对,不会修改任何文件。为安全起见,不包含应用包内部、.git、node_modules 和 ~/Library。硬链接不算重复;还没下载到本地的云文件(iCloud 等)和读不出来的文件不参与比对。",
+                        "Pick a minimum file size, then click Find Duplicates.\n\nFiles are only read for comparison, never modified. For safety, app bundles, .git, node_modules and ~/Library are skipped. Hard links are not counted as duplicates; cloud files that aren't downloaded (iCloud etc.) and files that can't be read are left out."))
                     .font(.callout)
                     .foregroundStyle(.secondary)
                     .padding(16)

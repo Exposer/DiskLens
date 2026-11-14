@@ -2,7 +2,7 @@ import SwiftUI
 import AppKit
 
 /// 启动磁盘的容量分解:已用 / 可清除 / 可用
-struct VolumeUsage {
+struct VolumeUsage: Equatable {
     let total: Int64
     let used: Int64        // 实际占用,不含可清除部分
     let purgeable: Int64   // 系统在空间不足时会自动清理的内容(缓存、本地快照、可重新下载的文件等)
@@ -31,9 +31,12 @@ struct VolumeUsage {
 }
 
 struct CapacityBar: View {
+    /// 容量数字来自整个 App 共用的磁盘监控(DiskMonitor),这里不再自己读磁盘、自己开定时器。
+    /// 以前写成 `@State var usage = VolumeUsage.read()`:这个初始值每次构造视图都会执行,
+    /// 而状态栏有三个候选版本,界面每重绘一次(比如鼠标移过一行)就在主线程查三遍磁盘容量。
+    @ObservedObject var monitor: DiskMonitor
     /// 窗口很窄时用紧凑版:一条短的容量条 + 一个“可用”数字,不再显示三个图例
     var compact = false
-    @State private var usage = VolumeUsage.read()
     @State private var showInfo = false
 
     private var usedColor: Color { tc(0.58, 0.6, 0.85) }
@@ -42,7 +45,7 @@ struct CapacityBar: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            if let u = usage {
+            if let u = monitor.usage {
                 bar(u)
                     .frame(width: compact ? 110 : 220, height: 10)
                 if compact {
@@ -67,9 +70,6 @@ struct CapacityBar: View {
                 Text(tr("无法读取磁盘容量", "Unable to read disk capacity"))
                     .font(.caption).foregroundStyle(.secondary)
             }
-        }
-        .onReceive(Timer.publish(every: 5, on: .main, in: .common).autoconnect()) { _ in
-            usage = VolumeUsage.read()
         }
     }
 
